@@ -26,10 +26,10 @@ The first run captures live Open-Meteo data under `snapshots/live/`. Reuse evide
 uv run python scripts/generate_scenarios.py BASE_SNAPSHOT_ID
 uv run python scripts/run_matrix.py --repeats 3 --confirm-live-cost
 uv run python scripts/summarize_runs.py
-uv run python scripts/export_sample.py
+uv run python scripts/export_sample.py --start-line 5 --end-line 37
 ```
 
-The scenario matrix deliberately derives stress cases from one public live snapshot. The manifest records each transformation. Matrix execution requires `--confirm-live-cost` because the faithful five-agent pattern is expensive. Generated live snapshots and full run logs are ignored; publish only reviewed samples.
+The scenario matrix deliberately derives stress cases from one public live snapshot. The manifest records each transformation. Matrix execution requires `--confirm-live-cost` because the faithful five-agent pattern is expensive. Generated live snapshots and full run logs are ignored; publish only reviewed samples. The committed sample currently selects private log lines 5–37, the 33-run matrix documented in `NOTES.md`.
 
 The first baseline used 108,827 swarm tokens and took 285 seconds. Compact lesson-hour handoffs plus an eight-recommendation cap reduced the same-snapshot comparison to 64,781 swarm tokens and 125 seconds without changing the five-agent path.
 

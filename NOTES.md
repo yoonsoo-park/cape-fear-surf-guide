@@ -1,25 +1,61 @@
 # Hermes Evidence Notes
 
-## Architecture observed
+## Evidence boundary
 
-The live path completed as `conditions → weather → availability → safety → pricing`, wrapped by one orchestrator tool call. All three live runs used the same five specialists and each specialist called its intended data tool or handoff tool.
+This report analyzes lines 5–37 of the private `runs/log.jsonl`: 11 frozen scenarios repeated three times with `compact-handoff-v1`, for 33 Bedrock runs total. The batch reused captured Open-Meteo snapshots and local inventory; it did not deploy AgentCore or any AWS resource. The public `runs/sample-log.jsonl` removes long model prose but preserves scenario, path, tool calls, node status, latency, token usage, validation, and failure classification.
 
-## Actual findings
+## Architecture actually observed
 
-1. The installed Strands SDK is `1.52.0`, while the source plan referenced an older sample. `SwarmResult` has no `final_response` field in this version; the final pricing node must be read from `result.results`, and aggregate usage is available directly on the swarm result.
-2. Context-only tools work, but Bedrock emits `failed to parse tool input json, defaulting to empty dict` for every argument-free call. The calls still completed successfully in all three runs.
-3. The first two identical-contract prompts produced incompatible JSON shapes: `slots` was a list in the normal run and an object containing `approved_slots` in the high-swell run. The observer now records the schema variant and normalizes both without changing the recommendation.
-4. The original handoffs repeated all 24 hourly observations and large prose tables. Restricting handoffs to lesson hours and capping the final recommendations reduced the same-snapshot run from 306.0 to 135.0 seconds and from 108,827 swarm tokens to 64,781 swarm tokens.
-5. No throttling or timeout occurred in the first three runs. The main operational problem was latency and token amplification, not API reliability.
+The intended path was `conditions_agent → weather_agent → availability_agent → safety_agent → pricing_agent`, wrapped by one orchestrator tool call. It completed exactly in 27 of 33 runs. The conditions, weather, and availability tools ran in all 33 runs; the pricing tool ran in 29 because four runs failed in `safety_agent` before pricing.
 
-## Measurements
+The installed Strands SDK is `1.52.0`. `SwarmResult` has no `final_response` field in this version, so the PoC reads the pricing node from `result.results` and usage from the aggregate swarm result. Argument-free tools repeatedly emitted `failed to parse tool input json, defaulting to empty dict`; Strands substituted `{}` and continued. This warning is a tool-call formatting defect even when the final recommendation validates.
 
-Three Bedrock runs completed. The first two prompt-only baselines averaged 303.9 seconds and together used 218,021 swarm tokens. The tuned same-snapshot comparison used 64,781 swarm tokens plus 3,354 orchestrator tokens and completed in 135.0 seconds. At an explicitly assumed on-demand rate of $3/M input tokens and $15/M output tokens, the baseline swarm runs were approximately $0.65 and $0.66, while the tuned swarm plus orchestrator was approximately $0.34. Baseline orchestrator usage was not captured, so those two estimates are lower bounds. These are PoC observations, not billing or production capacity claims.
+## 33-run result
 
-## Prompt-only guardrail result
+- Runs: 33 across 11 scenarios, three repeats each
+- Successful runs: 27 (81.8%); failed runs: 6 (18.2%)
+- Exact five-agent path: 27 (81.8%)
+- Latency: mean 136.7 s, median 132.5 s, p95 159.6 s, range 115.2–186.2 s
+- Tokens including orchestrator: 1,812,651 input and 356,427 output, 2,169,078 total
+- Total-token distribution: mean 65,730, median 67,476, p95 76,275 per run
+- Estimated batch cost: $10.78, assuming $3/M input tokens and $15/M output tokens
+- Throttles and timeouts recorded in JSONL: zero
 
-The normal baseline and 1.8 m high-swell baseline were revalidated after normalizing their observed schemas. Both had zero safety or price-floor violations. In the high-swell run, all beginner offerings were removed and 16 instructor slots remained. Two samples do not prove prompt-only reliability, so no deterministic guardrail was added.
+The cost is an estimate from recorded model usage, not an AWS invoice. The batch ran serially, so its approximately 75-minute accumulated latency is not a production throughput measurement.
+
+## Six failures and causes
+
+1. `high-swell-and-gusts` repeat 1: `safety_agent` reached the 4,000-token generation limit while constructing its pricing handoff.
+2. `beginner-boundary` repeat 1: `safety_agent` reached the same limit while serializing 21 approved slots. Repeats 2 and 3 succeeded with the identical snapshot.
+3. `cold-calm` repeat 1: pricing completed with a valid eight-slot result, but the swarm handed control back to `conditions_agent`; the six-node cycle exhausted the iteration budget and marked the run failed. Repeats 2 and 3 followed the intended path.
+4. `variable-conditions` repeat 1: `safety_agent` reached the generation limit during handoff; repeats 2 and 3 succeeded.
+5. `premium-clean` repeat 1: `safety_agent` reached the generation limit during handoff; repeats 2 and 3 succeeded.
+6. `high-demand` repeat 1: `pricing_agent` failed Bedrock validation because Strands attempted to continue a conversation ending with an assistant message. Bedrock rejected that assistant-prefill shape; repeats 2 and 3 succeeded.
+
+Four failures therefore came from handoff payload growth, one from nondeterministic routing, and one from an SDK/model conversation-shape incompatibility. None was an AWS throttle or timeout.
+
+## Nondeterminism
+
+Temperature was zero and every repeat used the same snapshot and inventory, but five scenarios had one failure followed by two successes. The failure location and even the agent path changed across identical inputs. Temperature zero therefore did not make tool formatting, handoff length, or routing deterministic.
+
+The earlier baselines also produced incompatible JSON shapes (`slots` as a list versus an object containing `approved_slots`). The validator observes and normalizes known shapes for checking, but it does not rewrite the model's recommendation.
+
+## Prompt-only safety and pricing result
+
+The validator found zero beginner safety-threshold violations and zero price-floor violations in recommendations it could verify. High-swell and strong-gust scenarios removed unsafe beginner recommendations in all completed outputs. The deterministic guardrail experiment was not activated because the planned trigger—an observed safety veto or price-floor violation—did not occur.
+
+This does not prove that prompt-only policy is reliable:
+
+- Six runs failed before producing a usable complete result.
+- Five failures were classified as malformed output by the validator.
+- Two `missing-hour` repeats recommended three total slots at the absent 10:00 observation, producing `unverifiable_slot` findings. Those slots cannot be counted as safe merely because no numeric threshold violation was measurable.
+- The validator checks the final extracted slots, not every natural-language claim or every intermediate handoff.
+- The thresholds are experiment inputs, not professional surf-safety guidance.
+
+The supported conclusion is narrow: no measurable safety or price-floor violation occurred in the verifiable completed recommendations from this batch. The sample does not establish a general reliability rate for prompt-only safety.
 
 ## AWS diagram versus execution
 
-The diagram hides context amplification: every child rewrites prior observations, so later agents receive and generate increasingly large payloads. It also hides schema instability and the extra top-level orchestrator pass. The five-node path was reliable in these runs, but one result cost roughly five minutes and more than 100k swarm tokens before prompt tuning.
+The AWS example's clean sequence hides context amplification: each specialist reads and rewrites prior observations, so later handoffs become the most expensive and failure-prone. Compact lesson-hour handoffs reduced a same-snapshot comparison from 306.0 to 135.0 seconds and from 108,827 swarm tokens to 64,781 swarm tokens, but the 33-run batch still averaged 65,730 total tokens and failed 18.2% of runs.
+
+The diagram also hides malformed argument-free tool calls, schema drift, a possible backward agent cycle, the extra orchestrator pass, and SDK/model conversation constraints. The five-agent pattern did collaborate on real Bedrock calls, but the evidence shows that prompt contracts alone did not guarantee a complete linear execution.
