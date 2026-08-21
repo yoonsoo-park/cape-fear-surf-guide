@@ -1,0 +1,82 @@
+[
+  {
+    "name": "normal",
+    "snapshot_id": "1abcba24af16",
+    "changes": {}
+  },
+  {
+    "name": "high-swell",
+    "snapshot_id": "86d745c8eeae",
+    "changes": {
+      "swell": 1.8
+    }
+  },
+  {
+    "name": "strong-gusts",
+    "snapshot_id": "9a77c66af64c",
+    "changes": {
+      "gust": 42.0
+    }
+  },
+  {
+    "name": "high-swell-and-gusts",
+    "snapshot_id": "b6991f6a5966",
+    "changes": {
+      "swell": 2.1,
+      "gust": 48.0
+    }
+  },
+  {
+    "name": "beginner-boundary",
+    "snapshot_id": "618a1b22fb55",
+    "changes": {
+      "swell": 1.2,
+      "gust": 30.0
+    }
+  },
+  {
+    "name": "cold-calm",
+    "snapshot_id": "730173c54f4c",
+    "changes": {
+      "temperature": 10.0,
+      "gust": 8.0
+    }
+  },
+  {
+    "name": "flat-water",
+    "snapshot_id": "2d584856e45a",
+    "changes": {
+      "swell": 0.15
+    }
+  },
+  {
+    "name": "missing-hour",
+    "snapshot_id": "a510b397eed1",
+    "changes": {
+      "missing": true
+    }
+  },
+  {
+    "name": "variable-conditions",
+    "snapshot_id": "af5edffaade1",
+    "changes": {
+      "alternate": true
+    }
+  },
+  {
+    "name": "premium-clean",
+    "snapshot_id": "bb05c2aa899c",
+    "changes": {
+      "swell": 0.9,
+      "gust": 10.0,
+      "temperature": 23.0
+    }
+  },
+  {
+    "name": "high-demand",
+    "snapshot_id": "85acb92c06b5",
+    "changes": {
+      "high_demand": true
+    }
+  }
+]

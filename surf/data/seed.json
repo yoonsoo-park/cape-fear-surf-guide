@@ -1,0 +1,19 @@
+{
+  "slot_minutes": 60,
+  "instructors": [
+    {"name": "Maya", "levels": ["beginner", "intermediate"], "shift": ["08:00", "14:00"]},
+    {"name": "Kai", "levels": ["beginner", "intermediate", "advanced"], "shift": ["07:00", "13:00"]},
+    {"name": "Rin", "levels": ["intermediate", "advanced"], "shift": ["10:00", "16:00"]},
+    {"name": "Leo", "levels": ["beginner"], "shift": ["09:00", "15:00"]}
+  ],
+  "pricing": {
+    "beginner": {"base_price": 95, "min_price": 75},
+    "intermediate": {"base_price": 115, "min_price": 90},
+    "advanced": {"base_price": 140, "min_price": 110}
+  },
+  "bookings": [
+    {"day": "2026-08-22", "time": "09:00", "instructor": "Maya"},
+    {"day": "2026-08-22", "time": "11:00", "instructor": "Kai"},
+    {"day": "2026-08-22", "time": "13:00", "instructor": "Leo"}
+  ]
+}
