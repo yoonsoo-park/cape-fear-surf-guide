@@ -6,6 +6,7 @@ import json
 import os
 import sys
 from collections.abc import Awaitable, Callable
+from hmac import compare_digest
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,9 @@ from surf.mcp_contract import ContractError, explain_frozen_window, find_frozen_
 
 PROTOCOL_VERSION = "2026-07-28"
 MCP_PATH = "/mcp"
+DEFAULT_MAX_REQUEST_BODY_BYTES = 65_536
+SUPPORTED_METHODS = frozenset({"tools/list", "tools/call"})
+SUPPORTED_TOOL_NAMES = frozenset({"find_surf_windows", "explain_surf_window"})
 
 
 def _result_payload(result: Any) -> dict[str, Any]:
@@ -84,13 +88,21 @@ def create_server() -> MCPServer:
 
 
 class ProtocolContractMiddleware:
-    """Reject requests whose HTTP routing headers disagree with JSON-RPC body."""
+    """Apply the public MCP contract before passing a request to the SDK.
+
+    ``Mcp-Method`` and ``Mcp-Name`` are an AgentCore routing extension.  They
+    are deliberately checked only in the isolated AgentCore mode; ordinary
+    Streamable HTTP clients route using the JSON-RPC body.
+    """
 
     def __init__(self, app: Callable[..., Awaitable[None]], auth_token: str | None,
-                 allowed_origins: tuple[str, ...]) -> None:
+                 allowed_origins: tuple[str, ...], max_request_body_bytes: int,
+                 require_agentcore_routing_headers: bool = False) -> None:
         self.app = app
         self.auth_token = auth_token
         self.allowed_origins = allowed_origins
+        self.max_request_body_bytes = max_request_body_bytes
+        self.require_agentcore_routing_headers = require_agentcore_routing_headers
 
     async def __call__(self, scope: dict[str, Any], receive: Callable[[], Awaitable[dict[str, Any]]],
                        send: Callable[[dict[str, Any]], Awaitable[None]]) -> None:
@@ -101,9 +113,27 @@ class ProtocolContractMiddleware:
             await _send_error(send, 405, "method_not_allowed", "The stateless MCP endpoint accepts POST only.")
             return
 
-        body = await _read_body(receive)
         headers = {key.decode("latin-1").lower(): value.decode("latin-1") for key, value in scope.get("headers", [])}
-        error = _validate_request(headers, body, self.auth_token, self.allowed_origins)
+        content_length = headers.get("content-length")
+        if content_length is not None:
+            try:
+                if int(content_length) > self.max_request_body_bytes:
+                    await _send_error(send, 413, "request_too_large", "Request body exceeds the configured limit.")
+                    return
+            except ValueError:
+                await _send_error(send, 400, "invalid_content_length", "Content-Length must be an integer.")
+                return
+        body = await _read_body(receive)
+        if len(body) > self.max_request_body_bytes:
+            await _send_error(send, 413, "request_too_large", "Request body exceeds the configured limit.")
+            return
+        error = _validate_request(
+            headers,
+            body,
+            self.auth_token,
+            self.allowed_origins,
+            require_agentcore_routing_headers=self.require_agentcore_routing_headers,
+        )
         if error is not None:
             await _send_error(send, *error)
             return
@@ -121,7 +151,14 @@ class ProtocolContractMiddleware:
             # it; a real client disconnect still reaches the MCP SDK.
             return await receive()
 
-        await self.app(scope, replay_receive, send)
+        # MCP Python SDK v2 currently performs an internal routing-header
+        # consistency check even for its modern stateless transport.  Public
+        # callers do not send AgentCore's extra headers, so derive ephemeral
+        # values from the already-validated body at this adapter boundary.
+        # Strict AgentCore mode instead passes its client-supplied headers
+        # through unchanged and verifies them above.
+        sdk_scope = scope if self.require_agentcore_routing_headers else _public_sdk_scope(scope, json.loads(body))
+        await self.app(sdk_scope, replay_receive, send)
 
 
 async def _read_body(receive: Callable[[], Awaitable[dict[str, Any]]]) -> bytes:
@@ -138,9 +175,31 @@ async def _read_body(receive: Callable[[], Awaitable[dict[str, Any]]]) -> bytes:
     return b"".join(chunks)
 
 
-def _validate_request(headers: dict[str, str], body: bytes, auth_token: str | None,
-                      allowed_origins: tuple[str, ...]) -> tuple[int, str, str] | None:
-    if auth_token is not None and headers.get("authorization") != f"Bearer {auth_token}":
+def _public_sdk_scope(scope: dict[str, Any], request: dict[str, Any]) -> dict[str, Any]:
+    """Give the SDK body-derived routing metadata without trusting client extras."""
+    headers = [
+        (key, value)
+        for key, value in scope.get("headers", [])
+        if key.lower() not in {b"mcp-method", b"mcp-name"}
+    ]
+    headers.append((b"mcp-method", request["method"].encode("latin-1")))
+    if request["method"] == "tools/call":
+        headers.append((b"mcp-name", request["params"]["name"].encode("latin-1")))
+    return {**scope, "headers": headers}
+
+
+def _validate_request(
+    headers: dict[str, str],
+    body: bytes,
+    auth_token: str | None,
+    allowed_origins: tuple[str, ...],
+    *,
+    require_agentcore_routing_headers: bool = False,
+) -> tuple[int, str, str] | None:
+    """Validate only protocol facts; never log the request or bearer token."""
+    supplied_authorization = headers.get("authorization", "")
+    expected_authorization = f"Bearer {auth_token}" if auth_token is not None else ""
+    if auth_token is not None and not compare_digest(supplied_authorization, expected_authorization):
         return 401, "unauthorized", "A configured bearer token is required."
     origin = headers.get("origin")
     if origin is not None and origin not in allowed_origins:
@@ -151,7 +210,14 @@ def _validate_request(headers: dict[str, str], body: bytes, auth_token: str | No
         request = json.loads(body)
     except json.JSONDecodeError:
         return 400, "invalid_json", "Request body must be JSON."
-    metadata = request.get("params", {}).get("_meta")
+    if not isinstance(request, dict) or request.get("jsonrpc") != "2.0":
+        return 400, "invalid_json_rpc", "Request body must be a JSON-RPC 2.0 object."
+    if "id" not in request:
+        return 400, "missing_request_id", "A stateless MCP request must include a JSON-RPC id."
+    params = request.get("params")
+    if not isinstance(params, dict):
+        return 400, "invalid_params", "Request params must be a JSON object."
+    metadata = params.get("_meta")
     if not isinstance(metadata, dict):
         return 400, "missing_request_metadata", "params._meta must carry the MCP v2 request envelope."
     if metadata.get("io.modelcontextprotocol/protocolVersion") != PROTOCOL_VERSION:
@@ -159,11 +225,16 @@ def _validate_request(headers: dict[str, str], body: bytes, auth_token: str | No
     if not isinstance(metadata.get("io.modelcontextprotocol/clientCapabilities"), dict):
         return 400, "missing_client_capabilities", "Request metadata must contain client capabilities."
     method = request.get("method")
-    if headers.get("mcp-method") != method:
-        return 400, "method_mismatch", "Mcp-Method must match JSON-RPC method."
+    if method not in SUPPORTED_METHODS:
+        return 400, "unsupported_method", "This frozen demo supports only tools/list and tools/call."
     if method == "tools/call":
-        name = request.get("params", {}).get("name")
-        if not name or headers.get("mcp-name") != name:
+        name = params.get("name")
+        if name not in SUPPORTED_TOOL_NAMES:
+            return 400, "unsupported_tool", "This frozen demo supports only its reviewed read-only tools."
+    if require_agentcore_routing_headers:
+        if headers.get("mcp-method") != method:
+            return 400, "method_mismatch", "Mcp-Method must match JSON-RPC method."
+        if method == "tools/call" and headers.get("mcp-name") != params["name"]:
             return 400, "name_mismatch", "Mcp-Name must match params.name for tools/call."
     return None
 
@@ -175,22 +246,32 @@ async def _send_error(send: Callable[[dict[str, Any]], Awaitable[None]], status:
     await send({"type": "http.response.body", "body": response, "more_body": False})
 
 
-def create_app(*, auth_token: str | None = None, allowed_origins: tuple[str, ...] = ("http://localhost",),
-               require_bearer_token: bool = True, transport_security: TransportSecuritySettings | None = None) -> Any:
+def create_app(
+    *,
+    auth_token: str | None = None,
+    allowed_origins: tuple[str, ...] = ("http://localhost",),
+    max_request_body_bytes: int = DEFAULT_MAX_REQUEST_BODY_BYTES,
+    require_bearer_token: bool = True,
+    require_agentcore_routing_headers: bool = False,
+    transport_security: TransportSecuritySettings | None = None,
+) -> Any:
     """Create a stateless JSON-over-POST `/mcp` application.
 
-    The standalone service requires its own bearer token.  The AgentCore entry
-    point uses this same policy engine with the bearer check disabled because
-    AgentCore's IAM data-plane authorization is the authenticated boundary.
+    The standalone service requires its own bearer token and accepts standard
+    MCP JSON-RPC routing.  The AgentCore entry point keeps its proprietary
+    routing-header checks in a separate configuration.
     """
     token = auth_token if auth_token is not None else os.environ.get("MCP_AUTH_TOKEN")
     if require_bearer_token and not token:
         raise RuntimeError("MCP_AUTH_TOKEN must be configured; the MCP endpoint never starts unauthenticated.")
+    if max_request_body_bytes < 1:
+        raise ValueError("max_request_body_bytes must be positive")
     server = create_server()
     app = server.streamable_http_app(
         streamable_http_path=MCP_PATH,
         json_response=True,
         stateless_http=True,
+        max_request_body_size=max_request_body_bytes,
         transport_security=transport_security or TransportSecuritySettings(
             enable_dns_rebinding_protection=True,
             allowed_hosts=["localhost:*", "127.0.0.1:*"],
@@ -198,7 +279,13 @@ def create_app(*, auth_token: str | None = None, allowed_origins: tuple[str, ...
         ),
         host="127.0.0.1" if require_bearer_token else "0.0.0.0",
     )
-    return ProtocolContractMiddleware(app, token if require_bearer_token else None, allowed_origins)
+    return ProtocolContractMiddleware(
+        app,
+        token if require_bearer_token else None,
+        allowed_origins,
+        max_request_body_bytes,
+        require_agentcore_routing_headers=require_agentcore_routing_headers,
+    )
 
 
 def create_agentcore_app() -> Any:
@@ -210,6 +297,7 @@ def create_agentcore_app() -> Any:
     """
     return create_app(
         require_bearer_token=False,
+        require_agentcore_routing_headers=True,
         allowed_origins=(),
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
     )

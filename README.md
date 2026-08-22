@@ -63,6 +63,7 @@ billing invoice.
 - [Devpost draft](docs/devpost-draft.md)
 - [Submission checklist](docs/submission-checklist.md)
 - [AgentCore MCP v2 compatibility result](docs/agentcore-mcp-v2-spike.md)
+- [External HTTPS MCP frozen-demo runbook](docs/external-mcp-demo.md)
 
 Publishing the repository, uploading a video, submitting to Devpost, and
 publishing blog posts remain explicit human-approved actions.
@@ -72,16 +73,18 @@ publishing blog posts remain explicit human-approved actions.
 The MCP service has its own Python SDK v2 runtime because the current Strands
 dependency requires MCP SDK v1. The service imports the same `surf` application
 and deterministic policy code; it does not duplicate a policy engine. Start it
-only with an explicit local bearer token:
+only after supplying a local bearer token through the process environment,
+never source control or a shell transcript:
 
 ```bash
-MCP_AUTH_TOKEN=local-demo-token uv run --project mcp_runtime python -m mcp_runtime.server
+uv run --project mcp_runtime python -m mcp_runtime.server
 ```
 
 It exposes one authenticated, stateless Streamable HTTP `POST /mcp` endpoint
-on port 8000. The server requires protocol `2026-07-28`, matching
-`Mcp-Method`/`Mcp-Name` request headers, and an allowed `Origin` when supplied.
-The frozen demonstration accepts the reviewed 2026-08-29 beginner profile and
+on port 8000. The public mode requires protocol `2026-07-28`, validated
+JSON-RPC tool names, and an allowed `Origin` when supplied. It does not require
+the AgentCore-specific `Mcp-Method` or `Mcp-Name` headers. The frozen
+demonstration accepts the reviewed 2026-08-29 beginner profile and
 reconstructs `explain_surf_window(window_id)` from reviewed snapshots on each
 request. It deliberately returns a structured unavailable error instead of
 inventing coverage for another date, beach, time range, or party profile.
@@ -96,6 +99,10 @@ The AgentCore-compatible container artifact is
 `mcp_runtime/Dockerfile`. Its actual AgentCore compatibility gate is documented
 in `docs/agentcore-mcp-v2-spike.md`; deploying it still requires explicit AWS
 approval and the documented personal-account runtime controls.
+
+The separate Lambda Function URL implementation is a time-limited external
+demo only. Its SSM-backed bearer authentication, request bounds, rotation, and
+teardown requirements are in [the external MCP runbook](docs/external-mcp-demo.md).
 
 Capture a reviewed live NWS alert response for offline replay only when a real
 identifying NWS `User-Agent` contact route has been selected:
