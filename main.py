@@ -2,40 +2,41 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-from datetime import datetime
+from pathlib import Path
 
-from surf.config import BEACHES, Settings
-from surf.orchestrator import run_once
-from surf.snapshots import capture_snapshot, load_snapshot
+from surf.application import plan_fixture
+from surf.planner_agent import plan_fixture_with_agent
+from surf.render import render_html
+from surf.replay_model import FixturePlannerModel
 
 
 def parser() -> argparse.ArgumentParser:
-    command = argparse.ArgumentParser(description="Run the Surf School Strands Swarm evidence PoC")
-    command.add_argument("--once", nargs=2, metavar=("BEACH", "YYYY-MM-DD"))
-    command.add_argument("--snapshot", help="Reuse a captured snapshot id")
+    command = argparse.ArgumentParser(description="Generate a Cape Fear Surf Guide planning record")
+    command.add_argument("--fixture", choices=("normal", "hazard", "stale", "conflict"), default="normal")
+    command.add_argument("--deterministic-only", action="store_true", help="Skip the offline Strands agent brief")
+    command.add_argument("--html", type=Path, help="Write a static HTML report")
     return command
 
 
 def main() -> int:
     args = parser().parse_args()
-    if args.once:
-        beach, day = args.once
-    else:
-        beach = input("Beach: ").strip()
-        day = input("Day (YYYY-MM-DD): ").strip()
-    if beach not in BEACHES:
-        print(f"Unsupported beach. Choose one of: {', '.join(BEACHES)}", file=sys.stderr)
-        return 2
-    try:
-        datetime.strptime(day, "%Y-%m-%d")
-        snapshot_id, snapshot = (args.snapshot, load_snapshot(args.snapshot)) if args.snapshot else capture_snapshot(beach, day)
-        record = run_once(Settings.from_env(), beach, day, snapshot_id, snapshot)
-    except Exception as error:
-        print(f"{type(error).__name__}: {error}", file=sys.stderr)
-        return 1
-    print(json.dumps(record, indent=2))
-    return 0 if record["success"] else 1
+    result = (plan_fixture(args.fixture) if args.deterministic_only
+              else plan_fixture_with_agent(args.fixture, FixturePlannerModel()))
+    if args.html:
+        args.html.parent.mkdir(parents=True, exist_ok=True)
+        args.html.write_text(render_html(result))
+    payload = {"record": result.record.model_dump(mode="json"),
+               "brief": result.brief.model_dump(mode="json"),
+               "brief_source": result.brief_source}
+    if hasattr(result, "tool_calls"):
+        payload["tool_calls"] = result.tool_calls
+        payload["metrics"] = {"elapsed_ms": result.elapsed_ms,
+                              "estimated_cost_usd": result.estimated_cost_usd,
+                              "findings": result.findings,
+                              "trace_id": result.trace_id,
+                              "usage": result.usage}
+    print(json.dumps(payload, indent=2))
+    return 0
 
 
 if __name__ == "__main__":

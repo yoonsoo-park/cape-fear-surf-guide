@@ -1,0 +1,9 @@
+{
+  "snapshot_id": "cape-fear-conflict-v1",
+  "profile": {"skill_level": "experienced"},
+  "window": {"beach_id": "wrightsville-beach", "starts_at": "2026-08-29T12:00:00Z", "ends_at": "2026-08-29T14:00:00Z"},
+  "evidence": [
+    {"source_name": "NWS Wilmington", "source_url": "https://api.weather.gov/", "source_kind": "nws_hazards", "issued_at": "2026-08-29T09:00:00Z", "valid_from": "2026-08-29T09:00:00Z", "valid_until": "2026-08-30T00:00:00Z", "retrieved_at": "2026-08-29T10:00:00Z", "location": "wrightsville-beach", "facts": {"active_official_hazard": false}, "freshness_state": "current", "original_timezone": "UTC", "raw_reference": "fixture:nws-conflict-v1"},
+    {"source_name": "Supplemental marine fixture", "source_url": "https://marine-api.open-meteo.com/", "source_kind": "marine_forecast", "issued_at": "2026-08-29T09:00:00Z", "valid_from": "2026-08-29T09:00:00Z", "valid_until": "2026-08-30T00:00:00Z", "retrieved_at": "2026-08-29T10:00:00Z", "location": "wrightsville-beach", "facts": {"safety_conflict": true}, "freshness_state": "current", "original_timezone": "UTC", "raw_reference": "fixture:marine-conflict-v1"}
+  ]
+}

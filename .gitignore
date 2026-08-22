@@ -3,6 +3,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .env
+dist/
 .agents/
 .codex/
 runs/log.jsonl

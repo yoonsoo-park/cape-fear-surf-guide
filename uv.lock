@@ -72,6 +72,29 @@ wheels = [
 ]
 
 [[package]]
+name = "cape-fear-surf-guide"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "requests" },
+    { name = "strands-agents" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "requests", specifier = ">=2.32.0" },
+    { name = "strands-agents", specifier = ">=1.20.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pytest", specifier = ">=8.3.0" }]
+
+[[package]]
 name = "certifi"
 version = "2026.7.22"
 source = { registry = "https://pypi.org/simple" }
@@ -1130,29 +1153,6 @@ sdist = { url = "https://files.pythonhosted.org/packages/92/f5/7bcd5018b80dcc9eb
 wheels = [
     { url = "https://files.pythonhosted.org/packages/32/28/6b1733dfb50ccf2b250d892ff9fdb0c987d0486febaf1305c5b6a904154b/strands_agents-1.52.0-py3-none-any.whl", hash = "sha256:768ff0e865df9f18154a2111f71e0c7683b8505e897704b89981cf7f11667bee", size = 687868, upload-time = "2026-08-12T18:52:01.538Z" },
 ]
-
-[[package]]
-name = "surf-school-swarm"
-version = "0.1.0"
-source = { editable = "." }
-dependencies = [
-    { name = "requests" },
-    { name = "strands-agents" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "requests", specifier = ">=2.32.0" },
-    { name = "strands-agents", specifier = ">=1.20.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.3.0" }]
 
 [[package]]
 name = "typing-extensions"

@@ -1,0 +1,5 @@
+# AgentCore source-code runtimes install dependencies from this file.
+# Keep the MCP SDK line isolated from the root Strands environment, which
+# currently has an incompatible MCP dependency constraint.
+mcp==2.0.0
+uvicorn==0.52.4

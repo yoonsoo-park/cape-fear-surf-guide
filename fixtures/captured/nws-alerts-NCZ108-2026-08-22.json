@@ -1,0 +1,15 @@
+{
+  "capture_schema_version": 1,
+  "captured_at": "2026-08-22T17:35:13.855285+00:00",
+  "response": {
+    "@context": {
+      "@version": "1.1"
+    },
+    "features": [],
+    "title": "Current watches, warnings, and advisories for Coastal New Hanover (NCZ108) NC",
+    "type": "FeatureCollection",
+    "updated": "2026-08-22T17:34:45+00:00"
+  },
+  "source": "api.weather.gov/alerts/active",
+  "zone": "NCZ108"
+}

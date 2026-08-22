@@ -1,0 +1,9 @@
+{
+  "snapshot_id": "cape-fear-hazard-v1",
+  "profile": {"skill_level": "beginner", "ages": [12, 40]},
+  "window": {"beach_id": "wrightsville-beach", "starts_at": "2026-08-29T12:00:00Z", "ends_at": "2026-08-29T14:00:00Z", "wave_height_m": 0.7, "swell_period_s": 9.0, "wind_kmh": 8.0},
+  "evidence": [
+    {"source_name": "NWS Wilmington", "source_url": "https://api.weather.gov/", "source_kind": "nws_hazards", "issued_at": "2026-08-29T09:00:00Z", "valid_from": "2026-08-29T09:00:00Z", "valid_until": "2026-08-30T00:00:00Z", "retrieved_at": "2026-08-29T10:00:00Z", "location": "wrightsville-beach", "facts": {"active_official_hazard": true, "headline": "Beach Hazards Statement"}, "freshness_state": "current", "original_timezone": "UTC", "raw_reference": "fixture:nws-hazard-v1"},
+    {"source_name": "Open-Meteo Marine", "source_url": "https://marine-api.open-meteo.com/", "source_kind": "marine_forecast", "issued_at": "2026-08-29T10:00:00Z", "valid_from": "2026-08-29T12:00:00Z", "valid_until": "2026-08-29T14:00:00Z", "retrieved_at": "2026-08-29T10:05:00Z", "location": "wrightsville-beach", "facts": {"wave_height_m": 0.7, "swell_period_s": 9.0, "wind_kmh": 8.0}, "freshness_state": "current", "original_timezone": "UTC", "raw_reference": "fixture:marine-hazard-v1"}
+  ]
+}

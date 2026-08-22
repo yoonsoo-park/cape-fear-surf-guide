@@ -1,0 +1,30 @@
+[project]
+name = "cape-fear-surf-guide-mcp-runtime"
+version = "0.1.0"
+description = "Isolated MCP Python SDK v2 runtime for Cape Fear Surf Guide"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "mcp==2.0.0",
+  "uvicorn==0.52.4",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["mcp_runtime"]
+
+[dependency-groups]
+dev = [
+  "pytest>=8.3.0",
+]
+
+[tool.uv]
+# The host-wide seven-day cutoff excludes the verified MCP v2 release.  Keep
+# this project-specific exception explicit and reproducible.
+exclude-newer = "2026-08-22T23:59:59Z"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

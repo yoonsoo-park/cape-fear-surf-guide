@@ -1,0 +1,317 @@
+{
+  "agent_path": {
+    "invariant_failure_count": 0,
+    "max_request_cost_usd": 0,
+    "model_structured_schema_valid_rate": 0,
+    "normal_false_veto_rate": 0,
+    "official_hazard_veto_rate": 0,
+    "p95_ms": null,
+    "run_failures": 0,
+    "tool_call_rate": 0,
+    "total_estimated_cost_usd": 0
+  },
+  "agentcore_mcp_v2": {
+    "deployment_performed_in_this_phase": false,
+    "evidence": "docs/agentcore-mcp-v2-spike.md",
+    "status": "passed"
+  },
+  "billing_note": "Token usage is the Bedrock/Strands provider counter preserved per run. AWS billing and Cost Explorer reconciliation are a later operating check; this report does not claim it is an invoice.",
+  "budget_stop_reason": "preflight_failed: a tool, schema, invariant, latency, policy, or per-request cost gate failed",
+  "deterministic_path": {
+    "byte_identical": true,
+    "decision_states": {
+      "conflict": "conflicting_evidence",
+      "hazard": "official_advisory_present",
+      "normal": "recommended_window",
+      "stale": "stale_data"
+    },
+    "model_calls": 0,
+    "p95_ms": 0.156,
+    "passed": true,
+    "runs": 120
+  },
+  "evaluation_total_estimated_cost_usd": 0.00223512,
+  "generated_at": "2026-08-22T20:50:37.212508+00:00",
+  "limits": {
+    "agent_p95_ms": 30000,
+    "deterministic_p95_ms": 2000,
+    "evaluation_cost_usd": 10.0,
+    "per_request_cost_usd": 0.05
+  },
+  "live_boundary": {
+    "account_id": "831597648506",
+    "inference_profile_arn": "arn:aws:bedrock:us-east-1:831597648506:inference-profile/us.amazon.nova-lite-v1:0",
+    "inference_profile_id": "us.amazon.nova-lite-v1:0",
+    "principal_arn": "arn:aws:iam::831597648506:user/yopa-study",
+    "profile": "personal",
+    "region": "us-east-1",
+    "verified_at": "2026-08-22T20:50:15.916871+00:00"
+  },
+  "passed": false,
+  "preflight": [
+    {
+      "actual_decision_state": "recommended_window",
+      "brief": {
+        "decision_state": "recommended_window",
+        "explanation": [
+          "The window is recommended based on the reviewed evidence.",
+          "There is no active official hazard for Wrightsville Beach.",
+          "The wave height is 0.7 meters, the swell period is 9.0 seconds, and the wind speed is 8.0 km/h."
+        ],
+        "headline": "Recommended Window for Wrightsville Beach",
+        "recheck_guidance": "No recheck guidance available.",
+        "source_urls": [
+          "https://api.weather.gov/",
+          "https://www.deq.nc.gov/",
+          "https://marine-api.open-meteo.com/"
+        ],
+        "warnings": [],
+        "window_id": "21f2bf7533541d08b8e7"
+      },
+      "brief_source": "agent",
+      "elapsed_ms": 10488.902,
+      "estimated_cost_usd": 0.00123702,
+      "expected_decision_state": "recommended_window",
+      "fixture": "normal",
+      "invariant_violations": [],
+      "model_output_error": null,
+      "model_schema_valid": true,
+      "passed": true,
+      "phase": "preflight",
+      "policy_findings": [],
+      "profile": {
+        "accessibility_needs": [],
+        "ages": [
+          16
+        ],
+        "name": "visitor",
+        "skill_level": "beginner"
+      },
+      "tool_call_count": 3,
+      "tool_calls": [
+        {
+          "arguments": {
+            "date_range": "2023-01-01 to 2023-12-31",
+            "zone": "Cape Fear"
+          },
+          "name": "get_nws_hazards",
+          "outcome": {
+            "evidence": [
+              {
+                "facts": {
+                  "active_official_hazard": false
+                },
+                "freshness_state": "current",
+                "issued_at": "2026-08-29T09:00:00Z",
+                "location": "wrightsville-beach",
+                "original_timezone": "UTC",
+                "raw_reference": "fixture:nws-normal-v1",
+                "retrieved_at": "2026-08-29T10:00:00Z",
+                "source_kind": "nws_hazards",
+                "source_name": "NWS Wilmington",
+                "source_url": "https://api.weather.gov/",
+                "valid_from": "2026-08-29T09:00:00Z",
+                "valid_until": "2026-08-30T00:00:00Z"
+              }
+            ]
+          }
+        },
+        {
+          "arguments": {
+            "date": "2023-01-01",
+            "deq_site": "Cape Fear"
+          },
+          "name": "get_water_quality_status",
+          "outcome": {
+            "evidence": [
+              {
+                "facts": {
+                  "status": "no_advisory_found"
+                },
+                "freshness_state": "current",
+                "issued_at": "2026-08-29T09:00:00-04:00",
+                "location": "wrightsville-beach",
+                "original_timezone": "America/New_York",
+                "raw_reference": "fixture:deq-normal-v1",
+                "retrieved_at": "2026-08-29T13:05:00Z",
+                "source_kind": "nc_deq_water_quality",
+                "source_name": "NC DEQ",
+                "source_url": "https://www.deq.nc.gov/",
+                "valid_from": "2026-08-29T09:00:00-04:00",
+                "valid_until": "2026-08-30T09:00:00-04:00"
+              }
+            ]
+          }
+        },
+        {
+          "arguments": {
+            "date_range": "2023-01-01 to 2023-12-31",
+            "latitude": 34.25,
+            "longitude": -77.92
+          },
+          "name": "get_marine_forecast",
+          "outcome": {
+            "evidence": [
+              {
+                "facts": {
+                  "swell_period_s": 9.0,
+                  "wave_height_m": 0.7,
+                  "wind_kmh": 8.0
+                },
+                "freshness_state": "current",
+                "issued_at": "2026-08-29T10:00:00Z",
+                "location": "wrightsville-beach",
+                "original_timezone": "UTC",
+                "raw_reference": "fixture:marine-normal-v1",
+                "retrieved_at": "2026-08-29T10:05:00Z",
+                "source_kind": "marine_forecast",
+                "source_name": "Open-Meteo Marine",
+                "source_url": "https://marine-api.open-meteo.com/",
+                "valid_from": "2026-08-29T12:00:00Z",
+                "valid_until": "2026-08-29T14:00:00Z"
+              }
+            ]
+          }
+        }
+      ],
+      "trace_id": "c489630d-ab5c-4cb5-a00b-263292b098c4",
+      "usage": {
+        "inputTokens": 15033,
+        "outputTokens": 1396,
+        "totalTokens": 16429
+      }
+    },
+    {
+      "actual_decision_state": "official_advisory_present",
+      "brief": {
+        "decision_state": "official_advisory_present",
+        "explanation": [
+          "An active official advisory overlaps this window."
+        ],
+        "headline": "We cannot recommend this window right now",
+        "recheck_guidance": "Re-check official conditions, posted flags, lifeguards, and local officials before entering the water.",
+        "source_urls": [
+          "https://api.weather.gov/",
+          "https://marine-api.open-meteo.com/"
+        ],
+        "warnings": [
+          "Active official hazard from NWS Wilmington."
+        ],
+        "window_id": "88f8c5dceec303dc1222"
+      },
+      "brief_source": "template",
+      "elapsed_ms": 10690.627,
+      "estimated_cost_usd": 0.0009981,
+      "expected_decision_state": "official_advisory_present",
+      "fixture": "hazard",
+      "invariant_violations": [
+        "deterministic_warning_removed"
+      ],
+      "model_output_error": null,
+      "model_schema_valid": true,
+      "passed": false,
+      "phase": "preflight",
+      "policy_findings": [],
+      "profile": {
+        "accessibility_needs": [],
+        "ages": [
+          16
+        ],
+        "name": "visitor",
+        "skill_level": "beginner"
+      },
+      "tool_call_count": 3,
+      "tool_calls": [
+        {
+          "arguments": {
+            "date_range": "2023-01-01 to 2023-12-31",
+            "zone": "Cape Fear"
+          },
+          "name": "get_nws_hazards",
+          "outcome": {
+            "evidence": [
+              {
+                "facts": {
+                  "active_official_hazard": true,
+                  "headline": "Beach Hazards Statement"
+                },
+                "freshness_state": "current",
+                "issued_at": "2026-08-29T09:00:00Z",
+                "location": "wrightsville-beach",
+                "original_timezone": "UTC",
+                "raw_reference": "fixture:nws-hazard-v1",
+                "retrieved_at": "2026-08-29T10:00:00Z",
+                "source_kind": "nws_hazards",
+                "source_name": "NWS Wilmington",
+                "source_url": "https://api.weather.gov/",
+                "valid_from": "2026-08-29T09:00:00Z",
+                "valid_until": "2026-08-30T00:00:00Z"
+              }
+            ]
+          }
+        },
+        {
+          "arguments": {
+            "date": "2023-01-01",
+            "deq_site": "Cape Fear"
+          },
+          "name": "get_water_quality_status",
+          "outcome": {
+            "evidence": []
+          }
+        },
+        {
+          "arguments": {
+            "date_range": "2023-01-01 to 2023-12-31",
+            "latitude": 34.25,
+            "longitude": -77.92
+          },
+          "name": "get_marine_forecast",
+          "outcome": {
+            "evidence": [
+              {
+                "facts": {
+                  "swell_period_s": 9.0,
+                  "wave_height_m": 0.7,
+                  "wind_kmh": 8.0
+                },
+                "freshness_state": "current",
+                "issued_at": "2026-08-29T10:00:00Z",
+                "location": "wrightsville-beach",
+                "original_timezone": "UTC",
+                "raw_reference": "fixture:marine-hazard-v1",
+                "retrieved_at": "2026-08-29T10:05:00Z",
+                "source_kind": "marine_forecast",
+                "source_name": "Open-Meteo Marine",
+                "source_url": "https://marine-api.open-meteo.com/",
+                "valid_from": "2026-08-29T12:00:00Z",
+                "valid_until": "2026-08-29T14:00:00Z"
+              }
+            ]
+          }
+        }
+      ],
+      "trace_id": "1c4a945d-5a4d-4af7-94ce-57fd332725dc",
+      "usage": {
+        "inputTokens": 10511,
+        "outputTokens": 1531,
+        "totalTokens": 12042
+      }
+    }
+  ],
+  "preflight_total_estimated_cost_usd": 0.00223512,
+  "price_source": {
+    "checked_on": "2026-08-22",
+    "input_sku": "QRGWJ3P8FT28EYX2",
+    "input_usd_per_1k_tokens": 6e-05,
+    "output_sku": "CBZ6A6U7XK8WJ3KA",
+    "output_usd_per_1k_tokens": 0.00024,
+    "url": "https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonBedrock/current/us-east-1/index.json"
+  },
+  "report_version": "phase3-v1",
+  "run_counts": {
+    "completed_live": 0,
+    "planned_matrix": 30,
+    "preflight": 2
+  }
+}
