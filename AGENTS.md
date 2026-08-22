@@ -3,7 +3,7 @@
 ## Project Purpose
 
 - Cape Fear Surf Guide turns difficult marine, weather, hazard, tide, and water-quality evidence into plain-language surf planning windows for Cape Fear residents, visitors, local surf schools, and external trip-planning agents.
-- The existing evidence-focused Strands Swarm PoC is the implementation baseline. Preserve its snapshots, validators, traces, and repeat-run evidence while productizing it for Wrightsville Beach, Carolina Beach, Kure Beach, and Fort Fisher.
+- The existing evidence-focused Strands Swarm PoC is the measured prior-art baseline, not the production orchestration. Preserve its snapshots, validators, traces, and repeat-run evidence while replacing context-amplifying handoffs with a deterministic Python core and one explanation-focused Strands agent.
 - Read `PLAN-cape-fear-productization.md` before changing product scope or architecture.
 
 
@@ -13,8 +13,10 @@
 - Use `cxdoc current . --json` to confirm the project mapping when context matters.
 - Keep durable project instructions in this file; keep searchable details in cxdoc knowledge notes.
 
-- Official advisories and deterministic policy override model recommendations. The model cannot declare ocean activity safe, override a hazard or water-quality advisory, or act when required evidence is missing, stale, ambiguous, or conflicting.
-- Keep Slack, MCP, and surf-school adapters on one shared application service and policy engine.
+- Fetching, source normalization, time conversion, window derivation, and veto decisions belong in deterministic Python. The Strands agent explains an already-finalized decision record and cannot invent or modify measurements.
+- Official advisories and deterministic policy override model explanations. The model cannot declare ocean activity safe or override a hazard advisory.
+- Treat an active NC DEQ advisory as a veto. `no_advisory_found`, `out_of_season`, or `feed_unavailable` must be labeled but are not automatic vetoes.
+- Keep CLI, static HTML, MCP, optional Slack, and surf-school adapters on one shared application service and policy engine.
 
 - Before any live Bedrock call, confirm the AWS account, role, region, profile, and inference-profile ID; never use an nCino account for this personal PoC.
 
