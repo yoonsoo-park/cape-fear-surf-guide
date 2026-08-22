@@ -302,7 +302,7 @@ Video, README, and architecture diagram always slip, so they get fixed dates rat
 
 | Window | Dates | Work |
 | --- | --- | --- |
-| Submission prerequisites | 08-22 to 08-24 | `LICENSE` (MIT), AWS Builder ID, AWS promotional-credit request, track confirmation, blog post 1 |
+| Submission prerequisites | 08-22 to 08-24 | `LICENSE` (MIT) done, AWS Builder ID, track confirmation, blog post 1 |
 | Phase 0 | 08-24 to 08-28 | locations, source verification, schema, thresholds, policy, fixtures, tests, timezone contract |
 | Phase 1 | 08-28 to 09-02 | deterministic vertical slice plus `surf_planner_agent` intake, tool orchestration, structured brief |
 | Phase 2 | 09-02 to 09-06 | live NWS, two MCP tools, CLI and static HTML |
@@ -311,10 +311,11 @@ Video, README, and architecture diagram always slip, so they get fixed dates rat
 | Phase 4 | 09-09 to 09-12 | README, architecture diagram, video recording and upload, text description, blog posts 2 and 3 |
 | Buffer | 09-12 to 09-14 | repository public, link audit, submit |
 
-Two deadlines fall before the submission deadline and must not be missed:
+Fixed constraints:
 
-- **09-11 12:00 PT**: $50 AWS promotional-credit request closes. Credits expire 10-31.
 - **09-07**: self-imposed feature freeze. Anything unfinished on this date is cut, not extended.
+- The $50 AWS promotional credits are already received. They expire **10-31**, which is after the judging period ends on 10-08, so they cover both the build and the period when judges may exercise the live demo. Anything beyond $50 comes out of pocket, so AgentCore and Bedrock usage in Phase 3 is metered against that ceiling and the eval matrix is sized to fit inside it.
+- The prior-art batch cost about $0.33 per run. At the agentic-path gate of $0.05 per request, a 30-run eval matrix costs roughly $1.50 in model spend, which leaves ample headroom for AgentCore runtime and the live demo.
 
 
 ### Phase 0 — Product contracts and Cape Fear fixtures
