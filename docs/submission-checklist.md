@@ -2,7 +2,7 @@
 
 ## Repository package
 
-- [ ] Make the GitHub repository public only after human approval: <https://github.com/yoonsoo-park/cape-fear-surf-guide>.
+- [x] GitHub repository made public on 2026-08-22 after human approval: <https://github.com/yoonsoo-park/cape-fear-surf-guide>.
 - [x] MIT license: [`LICENSE`](../LICENSE).
 - [x] Run instructions and safety limits: [`README.md`](../README.md).
 - [x] Architecture asset: [`docs/assets/architecture.svg`](assets/architecture.svg).
