@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
+  <title id="title">Cape Fear Surf Guide safety architecture</title>
+  <desc id="desc">Interfaces feed one Strands agent and deterministic source tools. The immutable policy record gates the structured brief. AgentCore MCP v2 remains an optional, independently verified deployment boundary.</desc>
+  <style>
+    text { font-family: Arial, sans-serif; fill: #11253b; } .title { font-size: 26px; font-weight: bold; } .label { font-size: 17px; font-weight: bold; } .small { font-size: 14px; } .box { stroke: #28536b; stroke-width: 2; rx: 12; } .line { stroke: #28536b; stroke-width: 3; fill: none; marker-end: url(#arrow); } .note { fill: #fff4d6; stroke: #a66a00; stroke-width: 2; rx: 10; }
+  </style>
+  <defs><marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#28536b"/></marker></defs>
+  <rect width="1200" height="720" fill="#f7fbfe"/>
+  <text x="42" y="48" class="title">Cape Fear Surf Guide: deterministic safety, agentic retrieval and explanation</text>
+  <rect x="40" y="92" width="260" height="105" class="box" fill="#d9edf7"/><text x="75" y="126" class="label">Shared application service</text><text x="70" y="154" class="small">CLI · static HTML · MCP</text><text x="62" y="176" class="small">optional Slack · surf-school adapter</text>
+  <rect x="455" y="92" width="300" height="105" class="box" fill="#d9edf7"/><text x="510" y="126" class="label">One Strands agent</text><text x="485" y="154" class="small">intake · tool-driven retrieval</text><text x="496" y="176" class="small">structured SurfBrief only</text>
+  <path d="M300 145 H455" class="line"/>
+  <rect x="875" y="92" width="275" height="105" class="note"/><text x="925" y="126" class="label">Agent boundary</text><text x="898" y="154" class="small">may choose what to query</text><text x="891" y="176" class="small">cannot decide water safety</text>
+  <rect x="405" y="270" width="400" height="105" class="box" fill="#dff3e4"/><text x="466" y="304" class="label">Recorded fact-only @tools</text><text x="440" y="332" class="small">NWS · NOAA · NC DEQ · Open-Meteo</text><text x="449" y="354" class="small">arguments, latency, failures preserved</text>
+  <path d="M605 197 V270" class="line"/>
+  <rect x="365" y="445" width="480" height="120" class="box" fill="#cbe7d4"/><text x="453" y="481" class="label">Deterministic Python policy core</text><text x="400" y="510" class="small">normalize and convert times · derive windows · apply vetoes</text><text x="428" y="536" class="small">immutable RecommendationRecord via policy.decide</text>
+  <path d="M605 375 V445" class="line"/>
+  <rect x="390" y="625" width="430" height="58" class="box" fill="#d9edf7"/><text x="487" y="660" class="label">Schema-validated brief or template fallback</text>
+  <path d="M605 565 V625" class="line"/>
+  <rect x="865" y="445" width="290" height="120" class="note"/><text x="906" y="480" class="label">MCP v2 / AgentCore</text><text x="890" y="508" class="small">stateless POST boundary verified</text><text x="882" y="533" class="small">optional runtime; no deployment here</text>
+  <path d="M845 505 H865" class="line"/>
+</svg>

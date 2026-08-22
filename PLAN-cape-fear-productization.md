@@ -15,6 +15,8 @@ The first supported area is:
 
 The existing snapshot system, validators, run logs, scenario matrix, and measured Strands Swarm failure evidence are the starting point. The five-agent handoff chain is a prior-art experiment, not the production architecture.
 
+Technology verification baseline: official MCP and Amazon Bedrock AgentCore documentation was checked on **2026-08-22**. The MCP target is Python SDK v2 with the date-versioned wire protocol **`2026-07-28`**. “MCP 2.0” in this plan means SDK v2, not a wire-protocol version named 2.0. Any later implementation plan that depends on current external technology must re-check official documentation, record the verification date and target version, and avoid claiming “latest” when that cannot be verified.
+
 The 33-run baseline completed the intended path in 27 runs (81.8%), averaged 136.7 seconds and about 65,730 tokens per run, and failed six times without an AWS throttle or timeout. Four failures came from handoff payload growth. Cape Fear Surf Guide therefore moves the safety decision out of the model entirely: deterministic Python owns collection, normalization, window derivation, and vetoes, while a single Strands agent owns request interpretation, tool-driven retrieval, and the plain-language brief. The agent decides what to look up and how to explain it. It has no path to deciding whether the water is safe.
 
 ## 2. People and jobs to be done
@@ -71,7 +73,7 @@ Example result:
 
 ### MCP interface
 
-Expose a read-only MCP server for other agents.
+Expose a read-only MCP server for other agents using Python SDK v2 `MCPServer` and protocol `2026-07-28`.
 
 Initial MVP tools:
 
@@ -81,6 +83,12 @@ Initial MVP tools:
 Later tools may add `get_beach_advisories` and `compare_beaches` only after the first two are measured end to end.
 
 Every tool returns structured evidence and the deterministic decision state. MCP consumers must not receive a bare natural-language recommendation without its evidence and freshness metadata.
+
+The deployment transport is stateless Streamable HTTP on one POST-only `/mcp` endpoint. Each request is independently reconstructible and returns JSON. The verified MCP Python SDK v2 `2026-07-28` stateless path does not use a GET event stream, resumable Server-Sent Events (SSE), initialization handshake, protocol session, connection identity, or process memory. `stdio`, which exchanges messages over a local process's standard input and output, remains a local compatibility and test transport only.
+
+Each successful result includes a structured `resultType`, including `complete` or `input_required`. Sampling, elicitation, or roots use the protocol's multi-request tool result pattern (MRTR): the server returns `input_required`, and the client sends a later request with the required input. The initial `reading_level` remains an optional client-supplied default; Phase 2 does not add MRTR unless a measured use case requires it.
+
+The HTTP boundary validates `MCP-Protocol-Version` against the required request metadata; validates `Mcp-Method` against the JSON-RPC `method`; validates `Mcp-Name` against `params.name` where applicable; rejects mismatches; validates the HTTP `Origin` header against an allowlist; and enforces authorization. Closing a request's SSE response is cancellation of that request. `window_id` and frozen snapshot inputs reconstruct records across independent requests, including requests handled by different processes.
 
 ### Surf-school interface
 
@@ -254,13 +262,15 @@ The agent sits above the deterministic core and below the response. It reaches t
 Recommended AWS path:
 
 - Strands Agents on Amazon Bedrock AgentCore Runtime;
-- API Gateway and Lambda for MCP or optional Slack ingress where appropriate;
+- a stateless Streamable HTTP POST `/mcp` boundary for MCP, with API Gateway and Lambda only where they preserve the verified protocol contract;
 - DynamoDB for request, evidence, and recommendation records;
 - S3 for reviewed frozen snapshots and evaluation artifacts;
 - EventBridge Scheduler for requested re-checks;
 - CloudWatch or AgentCore observability for traces, latency, and failures.
 
 No AWS resource creation is authorized by this plan. Before deployment, document the personal AWS account, role, region, infrastructure entrypoint, budget, retention, rollback, and smoke test.
+
+The MCP specification and current AgentCore examples are not assumed to be compatible. As checked on 2026-08-22, AgentCore documentation still demonstrates the older `FastMCP`, client initialization, and `Mcp-Session-Id` surface, while MCP `2026-07-28` uses `MCPServer`, has no initialization handshake, and has no protocol-level session. Phase 3 therefore begins with a compatibility spike. AgentCore remains an optional deployment target, never a correctness dependency.
 
 ## 9. Reuse map from `surf-school-swarm`
 
@@ -305,9 +315,9 @@ Video, README, and architecture diagram always slip, so they get fixed dates rat
 | Submission prerequisites | 08-22 to 08-24 | `LICENSE` (MIT) done, AWS Builder ID, track confirmation, blog post 1 |
 | Phase 0 | 08-24 to 08-28 | locations, source verification, schema, thresholds, policy, fixtures, tests, timezone contract |
 | Phase 1 | 08-28 to 09-02 | deterministic vertical slice plus `surf_planner_agent` intake, tool orchestration, structured brief |
-| Phase 2 | 09-02 to 09-06 | live NWS, two MCP tools, CLI and static HTML |
+| Phase 2 | 09-02 to 09-06 | live NWS, MCP SDK v2 stateless HTTP tools, CLI and static HTML |
 | **Feature freeze** | **09-07** | no new capability after this date |
-| Phase 3 | 09-07 to 09-09 | evaluation matrix, AgentCore deployment, live demo link |
+| Phase 3 | 09-07 to 09-09 | evaluation matrix, AgentCore MCP v2 compatibility gate, optional deployment and live demo link |
 | Phase 4 | 09-09 to 09-12 | README, architecture diagram, video recording and upload, text description, blog posts 2 and 3 |
 | Buffer | 09-12 to 09-14 | repository public, link audit, submit |
 
@@ -345,11 +355,17 @@ Exit gate: 30 repeated offline runs are schema-valid; hazard decisions are ident
 ### Phase 2 — MCP and one live source
 
 - Add NWS Wilmington surf-zone and alert retrieval.
-- Implement `find_surf_windows` and `explain_surf_window` as read-only MCP tools.
+- Pin the implementation contract to Python SDK v2 `MCPServer` and MCP protocol `2026-07-28`.
+- Implement `find_surf_windows` and `explain_surf_window` as read-only tools with structured `resultType`, evidence, freshness, and deterministic decision fields.
+- Serve one stateless Streamable HTTP POST endpoint at `/mcp`; retain `stdio` only for local compatibility tests.
+- Reconstruct `explain_surf_window` from the versioned `window_id` and frozen inputs without a protocol session, connection affinity, or process memory.
+- Validate protocol header against required request metadata, and method/tool-name headers against the corresponding JSON-RPC fields; reject missing, conflicting, or unsupported metadata deterministically.
+- Add an `Origin` allowlist, an explicit authorization boundary, and reject GET/SSE stream attempts on the stateless deployment path.
+- Test with the SDK v2 in-memory client and over Streamable HTTP, including two requests handled by fresh server processes.
 - Keep NOAA, NC DEQ, and Open-Meteo replayable from reviewed snapshots; add live adapters only as time permits.
 - Record retrieval time, validity, raw-source reference, and parsing errors.
 
-Exit gate: an MCP client can obtain and explain a frozen recommendation with full evidence; a live NWS response can be captured and replayed offline.
+Exit gate: an MCP `2026-07-28` client can obtain and explain a frozen recommendation with full evidence; no initialization or session dependency exists; two fresh processes reproduce the same record from `window_id`; invalid or mismatched metadata fails correctly; JSON POST behavior and GET/SSE rejection behave as specified; and a live NWS response can be captured and replayed offline.
 
 ### Phase 3 — Evaluation and AgentCore (09-07 to 09-09)
 
@@ -357,12 +373,14 @@ Exit gate: an MCP client can obtain and explain a frozen recommendation with ful
 - Implement reading-level-aware explanation without changing policy decisions.
 - Add evidence links, data-age labels, and re-check guidance.
 - Test with visitor, family beginner, experienced resident, and surf-school scenarios.
-- Deploy the same service to AgentCore Runtime after explicit AWS approval and documented account, role, region, budget, retention, rollback, and smoke test.
-- Publish a live demo link reachable through the judging period.
+- Begin with an AgentCore compatibility spike that verifies POST `/mcp`, protocol `2026-07-28` metadata and headers, SDK v2 `MCPServer`, structured JSON results, GET/SSE rejection, and the absence of session affinity.
+- Perform the compatibility spike or deployment only after explicit AWS approval and confirmation of the personal account, role, region, `personal` profile, inference-profile ID, budget, retention, rollback, and smoke test.
+- Deploy the same service to AgentCore Runtime and publish a live demo link only if AgentCore passes the MCP v2 compatibility gate.
+- If AgentCore cannot preserve the contract, cut AgentCore deployment without downgrading the protocol or adding session coupling. Keep the standalone Streamable HTTP demo and document the verified incompatibility.
 
-The official rules state that an AgentCore deployment and a live demo link each strengthen the Technical Implementation score. Both are in scope for this phase for that reason, and both are cut on 09-09 if the gates in section 12 have not passed.
+The official rules state that an AgentCore deployment and a live demo link each strengthen the Technical Implementation score. Both remain optional score boosters. They are cut on 09-09 if the acceptance gates or AgentCore compatibility gate have not passed.
 
-Exit gate: the quantitative acceptance gates pass; the recorded demo completes without live-network dependence; the AgentCore smoke test covers one recommendation and one deterministic veto.
+Exit gate: the quantitative acceptance gates pass and the recorded demo completes without live-network dependence. If AgentCore passed compatibility and was deployed, its smoke test covers one recommendation, one deterministic veto, two independent requests, and rejected GET/SSE. Otherwise, the plan records the incompatibility and the standalone MCP v2 demo remains complete.
 
 ### Phase 4 — Submission materials (09-09 to 09-12)
 
@@ -415,8 +433,9 @@ Exit gate: each deferred feature has its own measured smoke test and does not by
 5. The policy engine produces the record. The agent has no path around it.
 6. Cape Fear Surf Guide recommends one or two planning windows with official sources, issue times, freshness, and what would invalidate the recommendation.
 7. A trip-planning agent calls the MCP tool and adds the reviewed window to a draft itinerary.
-8. A hazard fixture activates an official advisory. Deterministic policy withdraws the recommendation even though the marine numbers still look favorable, and the same fixture produces the identical decision on every repeat.
-9. The closing slide contrasts the prior-art five-agent numbers with the measured gates from section 12.
+8. The demo makes a second independent MCP call with the returned `window_id`; a fresh server process reconstructs the same record without a session.
+9. A hazard fixture activates an official advisory. Deterministic policy withdraws the recommendation even though the marine numbers still look favorable, and the same fixture produces the identical decision on every repeat.
+10. The closing slide names protocol `2026-07-28`, shows the stateless/serverless request boundary, and contrasts the prior-art five-agent numbers with the measured gates from section 12.
 
 ## 12. Acceptance criteria
 
@@ -445,6 +464,19 @@ Latency and cost are measured per path, not end to end. A single combined budget
 
 For comparison, the prior-art five-agent Swarm measured 81.8% completion, 136.7 second mean latency, and about $0.33 per run. Those numbers are the baseline this architecture is judged against.
 
+### MCP v2 path (frozen record, network disabled in CI)
+
+| Gate | Target |
+| --- | --- |
+| Protocol version | exact `2026-07-28` match |
+| Structured results | 100% valid, with `resultType` and full evidence |
+| Stateless replay | 100% identical record across fresh server processes |
+| Header/body mismatch rejection | 100% across the negative test matrix |
+| Unknown `window_id` | deterministic structured error |
+| Session or process-memory dependency | none |
+| Frozen MCP demo | passes in CI with network disabled |
+| Deterministic record retrieval | zero model calls |
+
 ### Correctness and scope
 
 - Every recommendation includes source URLs, original timezone, and freshness metadata.
@@ -457,7 +489,7 @@ For comparison, the prior-art five-agent Swarm measured 81.8% completion, 136.7 
 - Repeated runs record tools, latency, token usage, errors, and policy outcomes.
 - No result claims that surfing is guaranteed safe.
 - No booking, payment, cancellation, rescue, or emergency action is available.
-- A full AgentCore smoke test covers one recommendation and one deterministic veto.
+- AgentCore is reported as a verified deployment only if the MCP v2 compatibility gate passes; otherwise the verified incompatibility is documented and the standalone MCP path remains the release target.
 
 ## 13. Explicitly out of scope for MVP
 
@@ -485,7 +517,7 @@ Build it with two mandatory cases:
 
 Only once both cases are reproducible does `surf_planner_agent` get wired in on top. Building the agent first would make it impossible to tell whether a wrong answer came from retrieval or from policy, which is exactly the ambiguity the prior-art PoC could not resolve.
 
-After the agent layer is measured, expose the same service through the two MCP tools. AgentCore lands in Phase 3 because the rules score it; Slack lands only after every required submission item is done.
+After the agent layer is measured, expose the same service through the two MCP tools. Phase 3 tests whether AgentCore can host the verified MCP v2 contract; it does not assume deployment compatibility merely because the rules score AgentCore. Slack lands only after every required submission item is done.
 
 ## 15. Phase 0 source and identity contracts
 
@@ -495,7 +527,7 @@ Each beach record must include a verified NOAA station or an explicit fallback m
 
 ### Stable window identity
 
-The MVP does not require DynamoDB. Derive `window_id` from a versioned hash of request parameters, snapshot ID, beach ID, and UTC interval. `explain_surf_window` can then reproduce the record from frozen inputs. Persistence can be added later without changing the public identifier contract.
+The MVP does not require DynamoDB. Derive `window_id` from a versioned hash of request parameters, snapshot ID, beach ID, and UTC interval. `explain_surf_window` reproduces the record from frozen inputs on every request, even when a different process handles it. Persistence can be added later without changing the public identifier contract, but protocol sessions, connection affinity, and process memory cannot become hidden requirements.
 
 ### Local rules
 

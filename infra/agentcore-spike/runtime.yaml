@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Isolated Cape Fear MCP v2 AgentCore Runtime compatibility spike. The runtime
+  has no model invocation, datastore, VPC attachment, or application AWS API
+  permissions.
+
+Parameters:
+  ArtifactBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: Bucket created by artifact-bucket.yaml.
+  ArtifactKey:
+    Type: String
+    AllowedPattern: '^.+$'
+    Description: Object key of the packaged source zip.
+  ArtifactVersionId:
+    Type: String
+    AllowedPattern: '^.{3,1024}$'
+    Description: Immutable S3 object version of the packaged source zip.
+  RuntimeName:
+    Type: String
+    Default: CapeFearMcpV2Spike
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9_]{0,47}$'
+    Description: Dedicated runtime name; do not point this stack at an existing runtime.
+
+Resources:
+  RuntimeExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: >-
+        Cape Fear MCP v2 spike execution role. The frozen-read-only application
+        makes no application AWS SDK calls. CloudWatch Logs permissions are
+        limited to AgentCore's required runtime log path.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock-agentcore.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: AgentCoreRuntimeLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: CreateAndDiscoverRuntimeLogGroups
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*'
+              - Sid: WriteRuntimeLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*'
+              - Sid: ConfigureThisRuntimeLogDelivery
+                Effect: Allow
+                Action: logs:PutResourcePolicy
+                Resource:
+                  - !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/${RuntimeName}-*'
+      Tags:
+        - Key: project
+          Value: CapeFearSurfGuide
+        - Key: purpose
+          Value: AgentCoreMcpV2CompatibilitySpike
+
+  Runtime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Ref RuntimeName
+      Description: Stateless MCP 2026-07-28 compatibility spike using reviewed frozen records only.
+      RoleArn: !GetAtt RuntimeExecutionRole.Arn
+      AgentRuntimeArtifact:
+        CodeConfiguration:
+          Code:
+            S3:
+              Bucket: !Ref ArtifactBucketName
+              Prefix: !Ref ArtifactKey
+              VersionId: !Ref ArtifactVersionId
+          Runtime: PYTHON_3_11
+          EntryPoint:
+            - agentcore_entrypoint.py
+      ProtocolConfiguration: MCP
+      NetworkConfiguration:
+        NetworkMode: PUBLIC
+      RequestHeaderConfiguration:
+        RequestHeaderAllowlist:
+          - MCP-Protocol-Version
+          - Mcp-Method
+          - Mcp-Name
+      LifecycleConfiguration:
+        IdleRuntimeSessionTimeout: 900
+        MaxLifetime: 28800
+      Tags:
+        project: CapeFearSurfGuide
+        purpose: AgentCoreMcpV2CompatibilitySpike
+        retention: runtime-delete-after-spike
+
+Outputs:
+  RuntimeArn:
+    Description: Invoke this ARN through the AgentCore data-plane API only.
+    Value: !GetAtt Runtime.AgentRuntimeArn
+  RuntimeId:
+    Value: !GetAtt Runtime.AgentRuntimeId
+  RuntimeVersion:
+    Value: !GetAtt Runtime.AgentRuntimeVersion
+  RuntimeExecutionRoleArn:
+    Value: !GetAtt RuntimeExecutionRole.Arn

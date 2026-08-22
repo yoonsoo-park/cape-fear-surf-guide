@@ -1,7 +1,7 @@
 [project]
-name = "surf-school-swarm"
+name = "cape-fear-surf-guide"
 version = "0.1.0"
-description = "Evidence-focused Strands Swarm PoC for surf-school booking recommendations"
+description = "Evidence-backed Cape Fear surf planning with deterministic safety policy and one Strands agent"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [

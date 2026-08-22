@@ -2,6 +2,8 @@
 
 Reviewed: 2026-08-22
 
+Technology verification baseline: official MCP and Amazon Bedrock AgentCore documentation checked 2026-08-22; target Python SDK v2 and MCP protocol `2026-07-28`.
+
 ## Outcome
 
 The review is accepted in substance. The production architecture changes from a five-agent handoff Swarm to a deterministic Python core followed by one explanation-focused Strands agent.
@@ -17,6 +19,8 @@ This is not a cosmetic optimization. The repository's 33-run baseline showed tha
 - Keep a template explanation when the model call fails.
 - Make CLI plus static HTML the required judged-demo interface.
 - Start MCP with `find_surf_windows` and `explain_surf_window`.
+- Implement MCP with SDK v2 `MCPServer`, stateless Streamable HTTP POST `/mcp`, structured `resultType`, and explicit request metadata validation.
+- Use `window_id` and frozen inputs to reconstruct records across independent processes; never depend on a protocol session, connection affinity, or process memory.
 - Keep Slack as an optional score booster.
 - Treat only an active NC DEQ advisory as a veto; absence, seasonal gaps, and unavailable feeds are labeled but do not automatically veto.
 - Put official NWS classifications above experimental planning filters.
@@ -30,7 +34,7 @@ This is not a cosmetic optimization. The repository's 33-run baseline showed tha
 - The hackathon requires Strands Agents, not a multi-agent architecture.
 - The repository must be public for submission, not necessarily throughout development.
 - Current repository commits are dated within the official submission period, but copied baseline work is still disclosed because the rules require disclosure of pre-existing code or work.
-- AgentCore strengthens Technical Implementation but is optional.
+- AgentCore strengthens Technical Implementation but is optional and must pass an MCP v2 compatibility gate before deployment is described as supported.
 
 ### Deferred until verified
 
@@ -40,6 +44,26 @@ This is not a cosmetic optimization. The repository's 33-run baseline showed tha
 - Any planning threshold intended for beginner, child, family, or accessibility profiles.
 
 Deferred values remain `None`, `unverified`, or `review_status: unreviewed`; they are never guessed.
+
+## MCP v2 and AgentCore compatibility decision
+
+The MCP target is the Python SDK v2 stable surface and date-versioned wire protocol `2026-07-28`. “MCP 2.0” refers to the SDK major version, not to a wire protocol numbered 2.0.
+
+The protocol removes the initialization handshake, protocol-level sessions, and independent server-initiated requests. Streamable HTTP uses one POST-only endpoint. The verified Python SDK v2 `2026-07-28` stateless server path returns JSON and does not use GET or resumable Server-Sent Events (SSE). Sampling, elicitation, and roots use an `input_required` result followed by a later client request, called the multi-request tool result pattern (MRTR).
+
+Phase 2 therefore uses `MCPServer`, validates `MCP-Protocol-Version` against required request metadata, `Mcp-Method` against JSON-RPC `method`, and `Mcp-Name` against `params.name`; it also validates `Origin`, enforces authorization, and rejects GET/SSE on the stateless deployment path. `stdio` is retained only for local compatibility testing.
+
+Amazon Bedrock AgentCore documentation checked on 2026-08-22 still shows the older `FastMCP`, client initialization, and `Mcp-Session-Id` surface. This is a verified documentation mismatch, not proof that the runtime is incompatible. Phase 3 must test whether AgentCore passes the SDK v2 and `2026-07-28` contract unchanged. If it does not, the project keeps standalone stateless Streamable HTTP and cuts AgentCore deployment rather than downgrading the protocol or introducing session coupling.
+
+Official sources:
+
+- https://modelcontextprotocol.io/specification/2026-07-28
+- https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http
+- https://py.sdk.modelcontextprotocol.io/whats-new/
+- https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-mcp.html
+- https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-service-contract.html
+
+Future plans that depend on current external technology must check official web documentation first, record the verification date and target version, and avoid claiming “latest” when current status cannot be verified.
 
 ## Verified official facts
 
