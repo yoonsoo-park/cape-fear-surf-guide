@@ -62,7 +62,7 @@ def test_unknown_window_is_a_deterministic_structured_tool_error():
     asyncio.run(run())
 
 
-def test_http_headers_must_match_json_rpc_request_and_origin_must_be_allowed():
+def test_public_transport_uses_standard_json_rpc_routing_without_agentcore_headers():
     body = (
         b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_surf_windows",'
         b'"arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",'
@@ -72,14 +72,45 @@ def test_http_headers_must_match_json_rpc_request_and_origin_must_be_allowed():
         "authorization": "Bearer test-token",
         "origin": "http://localhost",
         "mcp-protocol-version": PROTOCOL_VERSION,
+    }
+    assert _validate_request(headers, body, "test-token", ("http://localhost",)) is None
+    assert _validate_request({**headers, "origin": "https://untrusted.example"}, body, "test-token", ("http://localhost",))[1] == "origin_not_allowed"
+    assert _validate_request({key: value for key, value in headers.items() if key != "authorization"}, body, "test-token", ("http://localhost",))[1] == "unauthorized"
+
+
+def test_agentcore_routing_headers_remain_a_separate_strict_mode():
+    body = (
+        b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_surf_windows",'
+        b'"arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",'
+        b'"io.modelcontextprotocol/clientCapabilities":{}}}}'
+    )
+    headers = {
+        "mcp-protocol-version": PROTOCOL_VERSION,
         "mcp-method": "tools/call",
         "mcp-name": "find_surf_windows",
     }
-    assert _validate_request(headers, body, "test-token", ("http://localhost",)) is None
-    assert _validate_request({**headers, "mcp-method": "tools/list"}, body, "test-token", ("http://localhost",))[1] == "method_mismatch"
-    assert _validate_request({**headers, "mcp-name": "other"}, body, "test-token", ("http://localhost",))[1] == "name_mismatch"
-    assert _validate_request({**headers, "origin": "https://untrusted.example"}, body, "test-token", ("http://localhost",))[1] == "origin_not_allowed"
-    assert _validate_request({key: value for key, value in headers.items() if key != "authorization"}, body, "test-token", ("http://localhost",))[1] == "unauthorized"
+    assert _validate_request(headers, body, None, (), require_agentcore_routing_headers=True) is None
+    assert _validate_request(
+        {**headers, "mcp-method": "tools/list"}, body, None, (), require_agentcore_routing_headers=True
+    )[1] == "method_mismatch"
+    assert _validate_request(
+        {**headers, "mcp-name": "other"}, body, None, (), require_agentcore_routing_headers=True
+    )[1] == "name_mismatch"
+
+
+def test_public_transport_rejects_malformed_or_unsupported_protocol_requests():
+    headers = {"authorization": "Bearer test-token", "mcp-protocol-version": PROTOCOL_VERSION}
+    assert _validate_request(headers, b"not json", "test-token", ()) [1] == "invalid_json"
+    unsupported_method = (
+        b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"_meta":'
+        b'{"io.modelcontextprotocol/protocolVersion":"2026-07-28",'
+        b'"io.modelcontextprotocol/clientCapabilities":{}}}}'
+    )
+    assert _validate_request(headers, unsupported_method, "test-token", ()) [1] == "unsupported_method"
+    unsupported_tool = unsupported_method.replace(b'"initialize"', b'"tools/call"').replace(
+        b'"_meta"', b'"name":"unreviewed_tool","_meta"'
+    )
+    assert _validate_request(headers, unsupported_tool, "test-token", ()) [1] == "unsupported_tool"
 
 
 def test_http_transport_accepts_matching_request_and_rejects_a_mismatch():
@@ -104,18 +135,34 @@ def test_http_transport_accepts_matching_request_and_rejects_a_mismatch():
         "Authorization": "Bearer test-token",
         "Origin": "http://localhost",
         "MCP-Protocol-Version": PROTOCOL_VERSION,
-        "Mcp-Method": "tools/call",
-        "Mcp-Name": "find_surf_windows",
         "Accept": "application/json, text/event-stream",
     }
     with TestClient(create_app(auth_token="test-token"), base_url="http://localhost:8000") as client:
         accepted = client.post("/mcp", json=request, headers=headers)
-        rejected = client.post("/mcp", json=request, headers={**headers, "Mcp-Name": "wrong"})
+        rejected = client.post("/mcp", json={**request, "params": {**request["params"], "name": "wrong"}}, headers=headers)
     assert accepted.status_code == 200
     payload = accepted.json()
     assert payload["result"]["resultType"] == "complete"
     assert rejected.status_code == 400
-    assert rejected.json()["error"]["code"] == "name_mismatch"
+    assert rejected.json()["error"]["code"] == "unsupported_tool"
+
+
+def test_http_transport_enforces_the_configured_request_size_limit():
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/list",
+        "params": {"_meta": {"io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION, "io.modelcontextprotocol/clientCapabilities": {}}},
+    }
+    headers = {
+        "Authorization": "Bearer test-token",
+        "MCP-Protocol-Version": PROTOCOL_VERSION,
+        "Accept": "application/json, text/event-stream",
+    }
+    with TestClient(create_app(auth_token="test-token", max_request_body_bytes=32), base_url="http://localhost:8000") as client:
+        response = client.post("/mcp", json=request, headers=headers)
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "request_too_large"
 
 
 def test_stateless_runtime_rejects_get_streams():

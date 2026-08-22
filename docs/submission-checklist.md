@@ -27,7 +27,7 @@
 
 ## Public-repository security check
 
-- [x] Ran `git grep -n -I -E '(AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA |OPENSSH )?PRIVATE KEY|MCP_AUTH_TOKEN=)'` on 2026-08-22. The only match is the intentionally non-secret local example `MCP_AUTH_TOKEN=local-demo-token` in README; it is not a credential.
+- [x] Ran `git grep -n -I -E '(AKIA[0-9A-Z]{16}|aws_secret_access_key|BEGIN (RSA |OPENSSH )?PRIVATE KEY)'` on 2026-08-22. The external-demo runbook now prohibits bearer values in source, images, logs, and README files.
 - [x] Ran `gitleaks detect --no-git --source . --redact --exit-code 1 --verbose` on 2026-08-22. It scanned approximately 2.14 MB of submission files and reported no leaks.
 - [ ] Run `git status --short`; stage only intended submission files.
 - [ ] Inspect generated raw evidence for secrets before adding it. The report may contain the approved account and inference-profile identifiers, but must never contain credentials or session tokens.

@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Short-lived public HTTPS MCP demonstration using reviewed frozen snapshots.
+  This stack creates no VPC, NAT Gateway, EC2 instance, model, or live-data source.
+
+Parameters:
+  ArtifactBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: Private bucket containing the reviewed Lambda deployment zip.
+  ArtifactKey:
+    Type: String
+    AllowedPattern: '^.+$'
+    Description: Exact key of the reviewed Lambda deployment zip.
+  ArtifactObjectVersion:
+    Type: String
+    AllowedPattern: '^.{1,1024}$'
+    Description: Immutable S3 object version of the reviewed Lambda deployment zip.
+  DemoBearerToken:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+    Description: Short-lived demo bearer token. CloudFormation stores it only as the SecureString resource below.
+  DemoTokenParameterName:
+    Type: String
+    Default: /cape-fear-surf-guide/external-mcp-demo/bearer-token
+    AllowedPattern: '^/[A-Za-z0-9_.\-/]+$'
+    Description: Dedicated SSM SecureString path. Do not reuse a shared parameter.
+  TokenRotationId:
+    Type: String
+    Default: initial
+    AllowedPattern: '^[A-Za-z0-9_.-]{1,64}$'
+    Description: Change on every token rotation to replace warm Lambda environments after the SecureString update.
+  AllowedOrigins:
+    Type: CommaDelimitedList
+    Default: https://claude.ai,https://chatgpt.com
+    Description: Browser origins allowed to send an Origin header. Requests without Origin still require the bearer token.
+  MaxRequestBodyBytes:
+    Type: Number
+    Default: 65536
+    MinValue: 1024
+    MaxValue: 1048576
+    Description: Maximum JSON request body accepted by the MCP middleware.
+  ReservedConcurrentExecutions:
+    Type: Number
+    Default: 2
+    MinValue: 1
+    MaxValue: 10
+    Description: Hard concurrency cap for this small, read-only demo.
+  LogRetentionDays:
+    Type: Number
+    Default: 7
+    AllowedValues: [1, 3, 5, 7, 14, 30]
+    Description: Minimum CloudWatch Logs retention for this short-lived demo.
+  FunctionName:
+    Type: String
+    Default: cape-fear-external-mcp-demo
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-_]{0,63}$'
+
+Resources:
+  DemoTokenWriterLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FunctionName}-token-writer'
+      RetentionInDays: !Ref LogRetentionDays
+
+  DemoTokenWriterRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Create and delete only the external-MCP demo SecureString without logging its value.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ManageOnlyDedicatedDemoSecureString
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:PutParameter
+                  - ssm:DeleteParameter
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DemoTokenParameterName}'
+        - PolicyName: WriteOnlyTokenWritersServiceLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub '${DemoTokenWriterLogGroup.Arn}:*'
+
+  DemoTokenWriter:
+    Type: AWS::Lambda::Function
+    DependsOn: DemoTokenWriterLogGroup
+    Properties:
+      FunctionName: !Sub '${FunctionName}-token-writer'
+      Description: CloudFormation custom resource that stores the NoEcho demo input as one SecureString.
+      Handler: index.handler
+      MemorySize: 128
+      Role: !GetAtt DemoTokenWriterRole.Arn
+      Runtime: python3.11
+      Timeout: 30
+      Code:
+        ZipFile: |
+          import json
+          import urllib.request
+
+          import boto3
+
+          def respond(event, context, status, physical_id, reason=None):
+              body = json.dumps({
+                  "Status": status,
+                  "Reason": reason or f"See CloudWatch Log Stream: {context.log_stream_name}",
+                  "PhysicalResourceId": physical_id,
+                  "StackId": event["StackId"],
+                  "RequestId": event["RequestId"],
+                  "LogicalResourceId": event["LogicalResourceId"],
+                  "Data": {"ParameterName": physical_id},
+              }).encode("utf-8")
+              request = urllib.request.Request(event["ResponseURL"], data=body, method="PUT")
+              request.add_header("content-type", "")
+              request.add_header("content-length", str(len(body)))
+              urllib.request.urlopen(request).read()
+
+          def handler(event, context):
+              name = event["ResourceProperties"]["ParameterName"]
+              client = boto3.client("ssm")
+              try:
+                  if event["RequestType"] in ("Create", "Update"):
+                      client.put_parameter(
+                          Name=name,
+                          Value=event["ResourceProperties"]["Token"],
+                          Type="SecureString",
+                          Overwrite=True,
+                          Description="Short-lived bearer token for the Cape Fear frozen MCP demonstration.",
+                      )
+                  elif event["RequestType"] == "Delete":
+                      try:
+                          client.delete_parameter(Name=name)
+                      except client.exceptions.ParameterNotFound:
+                          pass
+                  respond(event, context, "SUCCESS", name)
+              except Exception as error:
+                  respond(event, context, "FAILED", name, type(error).__name__)
+
+  DemoToken:
+    Type: Custom::DemoSecureString
+    Properties:
+      ServiceToken: !GetAtt DemoTokenWriter.Arn
+      ParameterName: !Ref DemoTokenParameterName
+      Token: !Ref DemoBearerToken
+
+  DemoLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FunctionName}'
+      RetentionInDays: !Ref LogRetentionDays
+
+  DemoFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Read only the one external-MCP demo SecureString and write its own Lambda service logs.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadOnlyDemoToken
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadOnlyDedicatedSecureString
+                Effect: Allow
+                Action: ssm:GetParameter
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DemoTokenParameterName}'
+        - PolicyName: WriteOnlyThisFunctionsServiceLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: WriteOnlyThisLogGroup
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub '${DemoLogGroup.Arn}:*'
+      Tags:
+        - Key: project
+          Value: CapeFearSurfGuide
+        - Key: purpose
+          Value: ExternalMcpFrozenDemo
+
+  DemoFunction:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - DemoLogGroup
+      - DemoToken
+    Properties:
+      FunctionName: !Ref FunctionName
+      Description: Read-only frozen Cape Fear Surf Guide MCP demo. Never claims live conditions or safety.
+      Architectures: [x86_64]
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Ref ArtifactKey
+        S3ObjectVersion: !Ref ArtifactObjectVersion
+      Handler: mcp_runtime.lambda_entrypoint.handler
+      MemorySize: 512
+      ReservedConcurrentExecutions: !Ref ReservedConcurrentExecutions
+      Role: !GetAtt DemoFunctionRole.Arn
+      Runtime: python3.11
+      Timeout: 30
+      Environment:
+        Variables:
+          MCP_ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
+          MCP_AUTH_TOKEN_PARAMETER: !Ref DemoTokenParameterName
+          MCP_MAX_REQUEST_BODY_BYTES: !Ref MaxRequestBodyBytes
+          MCP_TOKEN_ROTATION_ID: !Ref TokenRotationId
+      Tags:
+        - Key: project
+          Value: CapeFearSurfGuide
+        - Key: purpose
+          Value: ExternalMcpFrozenDemo
+        - Key: retrieval-mode
+          Value: frozen_snapshot
+
+  DemoFunctionUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      AuthType: NONE
+      TargetFunctionArn: !GetAtt DemoFunction.Arn
+      Cors:
+        AllowCredentials: false
+        AllowHeaders:
+          - Authorization
+          - Content-Type
+          - MCP-Protocol-Version
+        AllowMethods: [POST]
+        AllowOrigins: !Ref AllowedOrigins
+        MaxAge: 300
+
+  AllowPublicFunctionUrlInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunctionUrl
+      FunctionName: !Ref DemoFunction
+      FunctionUrlAuthType: NONE
+      Principal: '*'
+
+  AllowFunctionUrlServiceInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref DemoFunction
+      InvokedViaFunctionUrl: true
+      Principal: '*'
+
+Outputs:
+  McpEndpoint:
+    Description: HTTPS MCP endpoint. Share only for the approved short-lived demo and always with a separate bearer token channel.
+    Value: !GetAtt DemoFunctionUrl.FunctionUrl
+  TokenParameterName:
+    Description: Dedicated demo token parameter. Its value is intentionally never an output.
+    Value: !Ref DemoTokenParameterName
+  TeardownStack:
+    Description: Delete this stack after recording to revoke the Function URL, Lambda, log group, and SecureString.
+    Value: !Ref AWS::StackName
