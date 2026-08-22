@@ -15,7 +15,7 @@ The first supported area is:
 
 The existing snapshot system, validators, run logs, scenario matrix, and measured Strands Swarm failure evidence are the starting point. The five-agent handoff chain is a prior-art experiment, not the production architecture.
 
-The 33-run baseline completed the intended path in 27 runs (81.8%), averaged 136.7 seconds and about 65,730 tokens per run, and failed six times without an AWS throttle or timeout. Four failures came from handoff payload growth. Cape Fear Surf Guide therefore replaces context-amplifying handoffs with deterministic collection, normalization, and policy code followed by one explanation-focused Strands agent.
+The 33-run baseline completed the intended path in 27 runs (81.8%), averaged 136.7 seconds and about 65,730 tokens per run, and failed six times without an AWS throttle or timeout. Four failures came from handoff payload growth. Cape Fear Surf Guide therefore moves the safety decision out of the model entirely: deterministic Python owns collection, normalization, window derivation, and vetoes, while a single Strands agent owns request interpretation, tool-driven retrieval, and the plain-language brief. The agent decides what to look up and how to explain it. It has no path to deciding whether the water is safe.
 
 ## 2. People and jobs to be done
 
@@ -135,23 +135,56 @@ Synthetic and frozen snapshots remain mandatory for tests and demos. Do not make
 
 ## 6. Runtime design
 
-Use a deterministic core followed by one explanation-focused Strands agent.
+The governing principle:
 
-### Deterministic Python core
+> The agent decides **what to look up** and **how to explain it**.
+> The agent is structurally incapable of deciding **whether the water is safe**.
+
+Everything the agent does is a task where being wrong is cheap and visible. Everything that determines a veto is deterministic Python that the agent can neither call selectively nor override.
+
+### Layer 1 — `surf_planner_agent` (Strands, agentic)
+
+The Strands agent owns request interpretation and evidence retrieval. It has three responsibilities.
+
+**1. Multi-turn intake.** Real requests are underspecified. "This weekend with my kid" does not name a beach, a skill level, an age, a travel radius, or an accessibility need. The agent asks at most two clarifying questions, then commits to a resolved `PartyProfile` and candidate set. It never fills a missing safety-relevant field with a guess; an unresolved field stays `None` and the policy engine treats it conservatively.
+
+**2. Retrieval orchestration through real tools.** Every deterministic fetcher is exposed as a Strands `@tool`. The agent decides which beaches, dates, hours, and sources to query and issues actual tool calls, looping when a source returns nothing useful. The tools return normalized facts only. They never return a verdict.
+
+Registered tools for the MVP:
+
+- `get_nws_hazards(zone, date_range)`
+- `get_nws_surf_zone_forecast(zone, date_range)`
+- `get_tide_predictions(station, date_range)`
+- `get_water_quality_status(deq_site, date)`
+- `get_marine_forecast(lat, lon, date_range)` (Open-Meteo, supplemental)
+- `list_supported_beaches()`
+
+Tool calls, arguments, latency, and failures are recorded per request. The existing `ToolCallRecorder` from the prior-art PoC is reused unchanged for this.
+
+**3. Brief generation via structured output.** After the record is frozen, the agent produces the community brief as a Strands structured output conforming to a declared schema, not as free prose. Free prose cannot satisfy the 100% schema-validity gate.
+
+Hard limits on the agent:
+
+- It cannot create, alter, or round any measurement.
+- It cannot change a decision state, remove a warning, or invent a source URL.
+- It cannot skip the policy engine; the only path from evidence to response runs through `policy.decide`.
+- If the model call fails, the deterministic record plus a template brief remain a complete, shippable answer.
+
+### Layer 2 — Deterministic Python core
 
 - Fetch NWS, NOAA, NC DEQ when available, and Open-Meteo concurrently.
 - Parse and normalize source payloads into the evidence schema.
 - Convert source times to UTC while retaining original timezone strings.
+- Derive candidate windows from normalized hourly facts.
 - Apply official-advisory vetoes and source-quality rules as pure functions.
 - Apply separately labeled, unreviewed planning filters only after official classifications.
-- Produce an immutable `RecommendationRecord` before any model call.
+- Produce an immutable `RecommendationRecord` before any brief is generated.
 
-### `community_brief_agent`
+Layer 2 contains no model call and no network call at decision time. Given the same evidence set and profile it returns the same decision every time, which is what makes the veto gates in section 12 measurable.
 
-- Receives only the finalized decision record.
-- Produces a plain-language explanation for the requested reading level and audience.
-- Cannot create measurements, change decision states, remove warnings, or invent source URLs.
-- If the model call fails, the deterministic record and a template-based fallback remain usable.
+### Why this split is the product
+
+The prior-art PoC put safety inside prompts and measured the result: 81.8% path completion, 18.2% failure, and a changing failure location under identical input at temperature zero. A recommendation engine for families near an ocean cannot inherit that variance. Moving the decision out of the model is not a performance optimization, it is the correctness argument.
 
 The existing availability tool can remain as an optional surf-school adapter outside the common policy core. The old five-agent Swarm remains as documented experimental evidence explaining why the new architecture is bounded and deterministic.
 
@@ -190,23 +223,33 @@ Internal fail-closed states remain distinct for audit and MCP consumers. The hum
 ## 8. Target architecture
 
 ```text
-CLI / static HTML / MCP / optional Slack / surf-school adapter
+   CLI / static HTML / MCP / optional Slack / surf-school adapter
                            |
-                 request normalization
-                           |
-       parallel deterministic source fetchers
-       NWS | NOAA | NC DEQ | Open-Meteo
-                           |
-       Python normalization + UTC conversion
-                           |
-        pure deterministic policy engine
-                           |
-          immutable recommendation record
-                           |
-       Strands agent: explanation only, one call
-                           |
-             response or template fallback
+        +------------------v-------------------+
+        |   surf_planner_agent  (Strands)      |
+        |   multi-turn intake                  |
+        |   retrieval orchestration            |
+        |   structured brief generation        |
+        +---+------------------------------+---+
+            |  @tool calls (recorded)      |  structured output
+            v                              |
+   parallel deterministic source fetchers   |
+   NWS | NOAA | NC DEQ | Open-Meteo         |
+            |                               |
+   Python normalization + UTC conversion    |
+            |                               |
+   window derivation                        |
+            |                               |
+   pure deterministic policy engine         |   <-- agent cannot
+            |                               |       call selectively
+   immutable RecommendationRecord ----------+       or override
+            |
+   brief (structured output) or template fallback
+            |
+   response
 ```
+
+The agent sits above the deterministic core and below the response. It reaches the record only by going through `policy.decide`, and it receives the record only after the record is frozen.
 
 Recommended AWS path:
 
@@ -235,7 +278,8 @@ No AWS resource creation is authorized by this plan. Before deployment, document
 
 - `Seal Beach` configuration into Cape Fear beach and source-location mappings;
 - conditions and weather outputs into the common evidence schema;
-- linear prompt-only handoffs into deterministic Python stages and one bounded explanation call;
+- linear prompt-only handoffs into deterministic Python stages plus one agent that orchestrates `@tool` retrieval and emits a structured brief;
+- `ToolCallRecorder` reused unchanged to record the new agent's tool calls;
 - final pricing JSON into a recommendation record;
 - safety prompt into deterministic policy plus model explanation;
 - CLI command into a shared application service callable by CLI, Slack, and MCP.
@@ -250,7 +294,28 @@ No AWS resource creation is authorized by this plan. Before deployment, document
 
 ## 10. Hackathon delivery plan
 
-Submission deadline: **September 14, 2026 at 5:00 PM PDT**. The plan optimizes first for a reproducible judged demo, then for optional integrations.
+Submission deadline: **September 14, 2026 at 5:00 PM PDT**. Track: **Good Neighbor Agents**. The plan optimizes first for a reproducible judged demo, then for score boosters the official rules name explicitly.
+
+### Dated schedule
+
+Video, README, and architecture diagram always slip, so they get fixed dates rather than "when the code is done".
+
+| Window | Dates | Work |
+| --- | --- | --- |
+| Submission prerequisites | 08-22 to 08-24 | `LICENSE` (MIT), AWS Builder ID, AWS promotional-credit request, track confirmation, blog post 1 |
+| Phase 0 | 08-24 to 08-28 | locations, source verification, schema, thresholds, policy, fixtures, tests, timezone contract |
+| Phase 1 | 08-28 to 09-02 | deterministic vertical slice plus `surf_planner_agent` intake, tool orchestration, structured brief |
+| Phase 2 | 09-02 to 09-06 | live NWS, two MCP tools, CLI and static HTML |
+| **Feature freeze** | **09-07** | no new capability after this date |
+| Phase 3 | 09-07 to 09-09 | evaluation matrix, AgentCore deployment, live demo link |
+| Phase 4 | 09-09 to 09-12 | README, architecture diagram, video recording and upload, text description, blog posts 2 and 3 |
+| Buffer | 09-12 to 09-14 | repository public, link audit, submit |
+
+Two deadlines fall before the submission deadline and must not be missed:
+
+- **09-11 12:00 PT**: $50 AWS promotional-credit request closes. Credits expire 10-31.
+- **09-07**: self-imposed feature freeze. Anything unfinished on this date is cut, not extended.
+
 
 ### Phase 0 — Product contracts and Cape Fear fixtures
 
@@ -269,11 +334,12 @@ Exit gate: fixtures contain no personal information; all expected decisions can 
 - Adapt the existing marine and weather fetchers into deterministic evidence adapters.
 - Add stubbed NWS and NC DEQ tools backed by frozen fixtures.
 - Implement deterministic policy and structured final response.
-- Add one explanation-focused Strands agent plus a template fallback.
+- Wrap every fetcher as a Strands `@tool` and build `surf_planner_agent` with multi-turn intake, retrieval orchestration, and structured brief output.
+- Keep the template brief as a fallback path, not as the primary path.
 - Generate a CLI response and static HTML report from the same record.
-- Preserve trace, cost, latency, and violation recording.
+- Preserve trace, tool-call, cost, latency, and violation recording.
 
-Exit gate: 30 repeated offline runs are schema-valid; hazard decisions are identical across repeats; the normal fixture has no false veto; no `unverifiable_slot` finding occurs.
+Exit gate: 30 repeated offline runs are schema-valid; hazard decisions are identical across repeats regardless of what the agent asked or retrieved; the normal fixture has no false veto; no `unverifiable_slot` finding occurs; the recorded tool-call log shows the agent actually driving retrieval rather than receiving a prebuilt payload.
 
 ### Phase 2 — MCP and one live source
 
@@ -284,50 +350,102 @@ Exit gate: 30 repeated offline runs are schema-valid; hazard decisions are ident
 
 Exit gate: an MCP client can obtain and explain a frozen recommendation with full evidence; a live NWS response can be captured and replayed offline.
 
-### Phase 3 — Evaluation and presentation
+### Phase 3 — Evaluation and AgentCore (09-07 to 09-09)
 
+- Run the scenario matrix and record every gate in section 12.
 - Implement reading-level-aware explanation without changing policy decisions.
 - Add evidence links, data-age labels, and re-check guidance.
 - Test with visitor, family beginner, experienced resident, and surf-school scenarios.
-- Rewrite README, disclose the copied `surf-school-swarm` baseline, add the architecture diagram, and document setup.
-- Record the five-minute demo from frozen evidence.
+- Deploy the same service to AgentCore Runtime after explicit AWS approval and documented account, role, region, budget, retention, rollback, and smoke test.
+- Publish a live demo link reachable through the judging period.
 
-Exit gate: the quantitative acceptance gates pass and the recorded demo completes without live-network dependence.
+The official rules state that an AgentCore deployment and a live demo link each strengthen the Technical Implementation score. Both are in scope for this phase for that reason, and both are cut on 09-09 if the gates in section 12 have not passed.
 
-### Phase 4 — Optional score boosters
+Exit gate: the quantitative acceptance gates pass; the recorded demo completes without live-network dependence; the AgentCore smoke test covers one recommendation and one deterministic veto.
 
-- Deploy the same service to AgentCore after explicit AWS approval.
-- Add a trip-planning example using MCP.
-- Add Slack only if the CLI, static HTML, MCP, evaluation, README, and video are complete.
-- Add live NOAA and DEQ adapters only after source contracts are verified.
+### Phase 4 — Submission materials (09-09 to 09-12)
 
-Exit gate: each optional feature has its own measured smoke test and does not bypass the shared policy engine.
+Every item below is required by the official rules, not optional polish.
 
-### Submission gate
+| Required item | Detail |
+| --- | --- |
+| Public repository URL | github, gitlab, or bitbucket; contains all source, assets, and setup instructions |
+| Open-source license | MIT or Apache, as a `LICENSE` file GitHub auto-detects so the badge appears in the About section. A line in the README does not satisfy this |
+| README | Problem, three user groups, setup, architecture, prior-art disclosure |
+| Architecture diagram | Required, not optional |
+| Video | At most five minutes, public on YouTube or Vimeo, showing the project working end to end plus a pitch covering the problem, the audience, and why it matters |
+| Text description | Features and functionality |
+| AWS Builder ID | Submission field |
+| Track | Good Neighbor Agents |
+| Live demo link | Optional, but the rules state it improves the Technical Implementation score |
 
-- Add an MIT or Apache license and expose it in repository metadata.
-- Confirm all source, assets, and setup instructions are present.
-- Make the repository public before submission.
-- Publish a working project or test build through the judging period.
-- Disclose the copied `surf-school-swarm` code and identify the new work built during the submission period.
+### Bonus score boosters
+
+The rules award up to 0.6 additional points for publicly posted builder.aws content, 0.2 each, with "Agents for Humans" in the title. Base scores top out at 5.0, so this is worth roughly 12%. Three posts are planned, and post 1 needs no new code because `NOTES.md` already contains the measurement.
+
+| # | Working title | Source material | Target date |
+| --- | --- | --- | --- |
+| 1 | Agents for Humans: I measured a five-agent Strands Swarm 33 times and it failed 18% of the time | `NOTES.md` | 08-24 |
+| 2 | Agents for Humans: moving the safety decision out of the model | `docs/plan-review-decisions.md`, `surf/policy.py` | 09-10 |
+| 3 | Agents for Humans: what the official surf forecast actually says | `docs/source-verification.md` | 09-12 |
+
+### Deferred until everything above is complete
+
+- Slack ingress.
+- A trip-planning integration example beyond the MCP tools.
+- Live NOAA and DEQ adapters, only after their source contracts are verified.
+
+Exit gate: each deferred feature has its own measured smoke test and does not bypass the shared policy engine.
+
+### Submission gate (09-12 to 09-14)
+
+- Make the repository public.
+- Verify the license badge renders in the About section.
+- Verify every submitted link resolves for an anonymous visitor, including the video and the live demo.
+- Disclose the copied `surf-school-swarm` baseline and identify the new work built during the submission period.
+- Keep the working project or test build reachable through the end of the judging period on 10-08.
 
 ## 11. Five-minute demo story
 
-1. A visiting parent asks for a beginner-friendly Saturday morning option near Wilmington using the CLI or static demo page.
-2. Deterministic adapters gather frozen marine, official hazard, tide, and water-quality evidence.
-3. Cape Fear Surf Guide recommends one or two planning windows and explains them in plain language.
-4. The response shows official sources, issue times, freshness, and what would invalidate the recommendation.
-5. The Strands agent turns the finalized record into a simple community brief without changing its decision.
-6. A trip-planning agent calls the MCP tool and adds the reviewed window to a draft itinerary.
-7. A hazard fixture activates an official advisory; deterministic policy withdraws the recommendation even if other conditions look favorable.
-8. The trace contrasts the old five-agent failure evidence with the new bounded explanation path.
+1. A visiting parent types something vague into the CLI or demo page: "this weekend with my kid, we are both beginners."
+2. `surf_planner_agent` asks one clarifying question, resolves the party profile, and decides which beaches, dates, and sources to query.
+3. The recorded tool-call log shows the agent driving retrieval across NWS, NOAA, NC DEQ, and Open-Meteo.
+4. Deterministic adapters normalize the frozen evidence, convert times to UTC, and derive candidate windows.
+5. The policy engine produces the record. The agent has no path around it.
+6. Cape Fear Surf Guide recommends one or two planning windows with official sources, issue times, freshness, and what would invalidate the recommendation.
+7. A trip-planning agent calls the MCP tool and adds the reviewed window to a draft itinerary.
+8. A hazard fixture activates an official advisory. Deterministic policy withdraws the recommendation even though the marine numbers still look favorable, and the same fixture produces the identical decision on every repeat.
+9. The closing slide contrasts the prior-art five-agent numbers with the measured gates from section 12.
 
 ## 12. Acceptance criteria
 
-- Schema-valid response rate is 100% across 30 repeated fixture runs.
-- Official-hazard veto reproduction is 100% with zero variation across repeats.
-- False-veto rate on the reviewed normal fixture is 0%.
-- `unverifiable_slot` findings are zero.
+Latency and cost are measured per path, not end to end. A single combined budget would force the agentic layer back out of the product, which is the opposite of the intent. Splitting them also turns "the safety decision is fast and deterministic" into a measured claim rather than a slogan.
+
+### Deterministic path (evidence set to frozen record, zero model calls)
+
+| Gate | Target |
+| --- | --- |
+| p95 latency | at most 2 seconds across 30 runs |
+| Model calls | zero |
+| Official-hazard veto reproduction | 100%, zero variation across repeats |
+| False-veto rate on the reviewed normal fixture | 0% |
+| `unverifiable_slot` findings | zero |
+| Same evidence and profile produce the same decision | byte-identical record, excluding `retrieved_at` |
+
+### Agentic path (intake, tool orchestration, structured brief)
+
+| Gate | Target |
+| --- | --- |
+| p95 latency | at most 30 seconds across 30 runs |
+| Estimated model cost | at most $0.05 per request from recorded usage |
+| Schema-valid brief rate | 100% across 30 repeated fixture runs |
+| Recorded tool calls | present in every run, with arguments and outcomes |
+| Model failure behavior | template brief and full record still returned |
+
+For comparison, the prior-art five-agent Swarm measured 81.8% completion, 136.7 second mean latency, and about $0.33 per run. Those numbers are the baseline this architecture is judged against.
+
+### Correctness and scope
+
 - Every recommendation includes source URLs, original timezone, and freshness metadata.
 - Official hazard and active water-quality advisories cannot be overridden by a model.
 - Missing, stale, ambiguous, or conflicting required NWS hazard evidence fails closed.
@@ -335,8 +453,6 @@ Exit gate: each optional feature has its own measured smoke test and does not by
 - MCP tools are read-only, bounded, and return structured results.
 - Frozen snapshots reproduce both the normal and hazard demos without live network access.
 - Normal and hazard demos complete in CI with network access disabled.
-- End-to-end p95 latency is at most 10 seconds across 30 measured runs.
-- Estimated model cost is at most $0.02 per request from recorded usage.
 - Repeated runs record tools, latency, token usage, errors, and policy outcomes.
 - No result claims that surfing is guaranteed safe.
 - No booking, payment, cancellation, rescue, or emergency action is available.
@@ -359,14 +475,16 @@ Do not begin with Slack, MCP, or AWS infrastructure.
 
 The first executable product slice is:
 
-`Cape Fear frozen snapshot -> deterministic normalization -> deterministic policy -> immutable record -> one Strands explanation call or template fallback`
+`Cape Fear frozen snapshot -> deterministic normalization -> deterministic policy -> immutable record -> structured brief or template fallback`
 
 Build it with two mandatory cases:
 
 1. a normal beginner planning window;
 2. an official-advisory fixture that must return `not_recommended` or `official_advisory_present`.
 
-Once that slice is reliable, expose the same service through the two MCP tools. Add AgentCore and Slack only after the judged demo, evaluation gates, and submission materials are complete.
+Only once both cases are reproducible does `surf_planner_agent` get wired in on top. Building the agent first would make it impossible to tell whether a wrong answer came from retrieval or from policy, which is exactly the ambiguity the prior-art PoC could not resolve.
+
+After the agent layer is measured, expose the same service through the two MCP tools. AgentCore lands in Phase 3 because the rules score it; Slack lands only after every required submission item is done.
 
 ## 15. Phase 0 source and identity contracts
 

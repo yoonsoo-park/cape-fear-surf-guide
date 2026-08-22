@@ -3,7 +3,8 @@
 ## Project Purpose
 
 - Cape Fear Surf Guide turns difficult marine, weather, hazard, tide, and water-quality evidence into plain-language surf planning windows for Cape Fear residents, visitors, local surf schools, and external trip-planning agents.
-- The existing evidence-focused Strands Swarm PoC is the measured prior-art baseline, not the production orchestration. Preserve its snapshots, validators, traces, and repeat-run evidence while replacing context-amplifying handoffs with a deterministic Python core and one explanation-focused Strands agent.
+- The existing evidence-focused Strands Swarm PoC is the measured prior-art baseline, not the production orchestration. Preserve its snapshots, validators, traces, and repeat-run evidence while replacing context-amplifying handoffs with a deterministic policy core plus one Strands agent that owns intake, tool-driven retrieval, and the brief.
+- The governing rule: the agent decides what to look up and how to explain it. The agent has no path to deciding whether the water is safe.
 - Read `PLAN-cape-fear-productization.md` before changing product scope or architecture.
 
 
@@ -13,7 +14,10 @@
 - Use `cxdoc current . --json` to confirm the project mapping when context matters.
 - Keep durable project instructions in this file; keep searchable details in cxdoc knowledge notes.
 
-- Fetching, source normalization, time conversion, window derivation, and veto decisions belong in deterministic Python. The Strands agent explains an already-finalized decision record and cannot invent or modify measurements.
+- Source normalization, time conversion, window derivation, and veto decisions belong in deterministic Python. Expose the fetchers as Strands `@tool`s so the agent drives retrieval, but the tools return facts only and never a verdict.
+- The agent may ask clarifying questions and choose what to query. It cannot invent or modify a measurement, change a decision state, remove a warning, invent a source URL, or reach the record without going through `policy.decide`.
+- Emit the brief as Strands structured output, not free prose. Free prose cannot satisfy the 100% schema-validity gate.
+- Latency and cost gates are per path: deterministic path p95 at most 2s with zero model calls, agentic path p95 at most 30s and at most $0.05 per request. Never merge them into one end-to-end budget.
 - Official advisories and deterministic policy override model explanations. The model cannot declare ocean activity safe or override a hazard advisory.
 - Treat an active NC DEQ advisory as a veto. `no_advisory_found`, `out_of_season`, or `feed_unavailable` must be labeled but are not automatic vetoes.
 - Keep CLI, static HTML, MCP, optional Slack, and surf-school adapters on one shared application service and policy engine.
