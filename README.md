@@ -64,6 +64,7 @@ billing invoice.
 - [Submission checklist](docs/submission-checklist.md)
 - [AgentCore MCP v2 compatibility result](docs/agentcore-mcp-v2-spike.md)
 - [External HTTPS MCP frozen-demo runbook](docs/external-mcp-demo.md)
+- [Claude Desktop local-bridge verification runbook](docs/claude-desktop-mcp.md)
 
 Publishing the repository, uploading a video, submitting to Devpost, and
 publishing blog posts remain explicit human-approved actions.
