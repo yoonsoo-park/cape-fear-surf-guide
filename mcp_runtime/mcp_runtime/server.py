@@ -1,4 +1,4 @@
-"""Stateless Streamable HTTP MCP v2 server for the public live demo."""
+"""Stateless Streamable HTTP MCP v2 server for the API-key-gated live demo."""
 
 from __future__ import annotations
 
@@ -93,8 +93,8 @@ def create_server(record_store: RecordStore, *, now: Callable[[], int] = unix_no
 class ProtocolContractMiddleware:
     """Validate protocol shape before handing the request to the MCP SDK.
 
-    It deliberately never logs the request body, party profile, or
-    Authorization header.  Authorization is not part of this public demo.
+    It deliberately never logs the request body, party profile, or credential
+    headers. API Gateway validates `x-api-key` before Lambda is invoked.
     """
 
     def __init__(self, app: Callable[..., Awaitable[None]], allowed_origins: tuple[str, ...],

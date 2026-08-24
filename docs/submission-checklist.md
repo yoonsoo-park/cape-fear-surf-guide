@@ -22,7 +22,7 @@
 ## Recording and submission
 
 - [ ] Record the public video using [`docs/demo-script.md`](demo-script.md); keep it at five minutes or less.
-- [ ] After explicit AWS approval, deploy the API Gateway REST + WAF public live MCP stack and record Claude Desktop tool discovery, live call, and 24-hour `window_id` replay. Record ChatGPT Developer Mode separately only if that account supports remote MCP.
+- [ ] After explicit AWS approval, deploy the API Gateway REST + WAF API-key-gated live MCP stack and record Claude Desktop plus ChatGPT Desktop/Codex tool discovery, live call, and 24-hour `window_id` replay. Use the environment-backed `x-api-key`; do not record its value.
 - [ ] For that deployment, record the new `ExposureId`, approved 72-hour `PublicUntilUtc`, $10 budget-email confirmation, and circuit-breaker status. After expiry, confirm concurrency is zero before requesting separate stack-deletion approval.
 - [ ] Upload the video after human approval and add its public URL to the Devpost entry.
 - [ ] Paste and review [`docs/devpost-draft.md`](devpost-draft.md) in Devpost after human approval.
