@@ -34,6 +34,7 @@ do not add a second endpoint or local proxy.
    ```toml
    [mcp_servers.cape_fear_surf_guide]
    url = "https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/demo/mcp"
+   http_headers = { "User-Agent" = "cape-fear-codex/1.0" }
    env_http_headers = { "x-api-key" = "CAPE_FEAR_MCP_API_KEY" }
    enabled_tools = ["find_surf_windows", "explain_surf_window"]
    default_tools_approval_mode = "prompt"
@@ -41,8 +42,10 @@ do not add a second endpoint or local proxy.
    enabled = true
    ```
 
-3. Restart ChatGPT Desktop. In a new Codex chat, type `/mcp`, confirm
-   `cape_fear_surf_guide` is connected, and repeat the three checks above.
+3. Restart ChatGPT Desktop after changing this file. The User-Agent is required
+   because the public WAF rejects requests with no User-Agent header. In a new
+   Codex chat, type `/mcp`, confirm `cape_fear_surf_guide` is connected, and
+   repeat the three checks above.
 
 The Desktop UI can add a Streamable HTTP URL, but this config-file route is
 required here because it reads the API key from an environment variable rather

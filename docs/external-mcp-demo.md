@@ -4,9 +4,11 @@
 
 The judge-facing endpoint is an API-key-gated, read-only HTTPS MCP service.
 It supports only Wrightsville Beach and dates from today through six days ahead
-in `America/New_York`. It accepts stateless JSON-RPC on `POST /mcp`, protocol
-`2026-07-28`, and exposes only `find_surf_windows` and
-`explain_surf_window`.
+in `America/New_York`. It accepts the stateless v2 JSON-RPC envelope on
+`POST /mcp` with protocol `2026-07-28`, and also accepts the ordinary
+initialization handshake used by standard MCP hosts such as Codex
+(`2025-06-18`). Both surfaces expose only `find_surf_windows` and
+`explain_surf_window`; the deterministic policy and request controls are shared.
 
 Each `find_surf_windows` call retrieves NWS `NCZ108` alerts and forecast,
 NOAA station `8658163` tide predictions, and Open-Meteo marine and weather
@@ -35,7 +37,8 @@ The CloudFormation template is
 It creates API Gateway REST `POST /mcp`, Lambda, two DynamoDB tables, and a
 regional AWS WAF web ACL. WAF blocks an IP after 30 requests in five minutes
 and blocks all clients together after 60 `POST /mcp` requests in five minutes.
-API Gateway also targets 0.2 requests per second with a burst of two. Its
+API Gateway targets 1 request per second with a burst of two so standard MCP
+hosts can complete their short initialization handshake. Its
 `POST /mcp` method requires the `x-api-key` header before Lambda is invoked.
 The stack creates a usage plan but deliberately creates no API key value: when
 a judge requests access at `yoonsoo@duck.com`, create a distinct API Gateway
@@ -109,7 +112,7 @@ the client version, date, endpoint, tool names, HTTP result, decision state,
 retrieval mode, and `window_id`; do not record prompt content or model prose.
 
 For the ChatGPT Desktop/Codex setup, use the environment-backed
-`env_http_headers` configuration in
+`x-api-key` plus the non-secret `User-Agent` configuration in
 [`docs/claude-desktop-mcp.md`](claude-desktop-mcp.md). If either product cannot
 make the request, record it as not verified rather than adding OAuth or
 weakening the public controls.

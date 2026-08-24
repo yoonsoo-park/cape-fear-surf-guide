@@ -31,10 +31,10 @@ Parameters:
     AllowedValues: [2]
   ApiRateLimit:
     Type: Number
-    Default: 0.2
+    Default: 1
     MinValue: 0.1
     MaxValue: 1
-    Description: API Gateway steady-state POST /mcp target rate per second.
+    Description: API Gateway steady-state POST /mcp target rate per second; standard MCP hosts perform a short handshake burst.
   ApiBurstLimit:
     Type: Number
     Default: 2

@@ -15,7 +15,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from surf.schema import RecommendationRecord, SurfBrief
+from surf.schema import PartyProfile, RecommendationRecord, SurfBrief
 
 
 LOGGER = logging.getLogger(__name__)
@@ -50,8 +50,14 @@ class AgentCorePlanner:
 
     def __call__(self, date: str, party_profile: dict[str, Any], preferred_area: str | None = None,
                  time_range: str | None = None) -> AgentCorePlanningResult | tuple[str, str, dict[str, Any]]:
-        payload = {"input": {"date": date, "party_profile": party_profile,
-                               "preferred_area": preferred_area, "time_range": time_range}}
+        canonical_profile = _canonical_party_profile(party_profile)
+        if isinstance(canonical_profile, tuple):
+            return canonical_profile
+        canonical_area = _canonical_preferred_area(preferred_area)
+        if isinstance(canonical_area, tuple):
+            return canonical_area
+        payload = {"input": {"date": date, "party_profile": canonical_profile,
+                               "preferred_area": canonical_area, "time_range": time_range}}
         try:
             response = self.client.invoke_agent_runtime(
                 agentRuntimeArn=self.runtime_arn,
@@ -69,6 +75,37 @@ class AgentCorePlanner:
             LOGGER.warning("AgentCore invocation failed: %s", type(error).__name__)
             return "agentcore_unavailable", "The AgentCore planner is temporarily unavailable.", {}
         return _validated_result(body)
+
+
+def _canonical_party_profile(party_profile: dict[str, Any]) -> dict[str, Any] | tuple[str, str, dict[str, Any]]:
+    """Validate and normalize the public tool's profile before AgentCore.
+
+    Some standard MCP hosts infer the generic ``dict`` schema as ``skill``
+    instead of the canonical ``skill_level`` field. Accept that harmless alias
+    at this adapter boundary, then send only the shared PartyProfile schema to
+    AgentCore. Invalid input fails closed without spending a runtime call.
+    """
+    if not isinstance(party_profile, dict):
+        return "invalid_party_profile", "party_profile must be an object.", {}
+    candidate = dict(party_profile)
+    if "skill_level" not in candidate and isinstance(candidate.get("skill"), str):
+        candidate["skill_level"] = candidate.pop("skill")
+    try:
+        return PartyProfile.model_validate(candidate).model_dump(mode="json")
+    except ValueError:
+        return "invalid_party_profile", "party_profile does not satisfy the shared schema.", {}
+
+
+def _canonical_preferred_area(preferred_area: str | None) -> str | None | tuple[str, str, dict[str, Any]]:
+    """Accept the human-facing Wrightsville name but send the stable beach ID."""
+    if preferred_area is None:
+        return None
+    if not isinstance(preferred_area, str):
+        return "unsupported_area", "The public live demo supports Wrightsville Beach only.", {}
+    normalized = "-".join(preferred_area.strip().lower().replace("_", " ").split())
+    if normalized in {"wrightsville-beach", "wrightsville"}:
+        return "wrightsville-beach"
+    return "unsupported_area", "The public live demo supports Wrightsville Beach only.", {"preferred_area": preferred_area}
 
 
 def _validated_result(body: Any) -> AgentCorePlanningResult | tuple[str, str, dict[str, Any]]:

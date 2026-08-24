@@ -1,4 +1,4 @@
-"""Stateless Streamable HTTP MCP v2 server for the API-key-gated live demo."""
+"""API-key-gated Streamable HTTP MCP v2 server with standard-host compatibility."""
 
 from __future__ import annotations
 
@@ -27,11 +27,22 @@ from surf.live_store import DynamoDbRecordStore, RecordStore, unix_now
 from .exposure_control import ExposureUnavailable, RequestBudget
 
 PROTOCOL_VERSION = "2026-07-28"
+# The public judge route uses the stateless v2 envelope above.  Codex's
+# Streamable HTTP client still performs the ordinary MCP initialization
+# handshake, currently advertising 2025-06-18.  Supporting that read-only
+# compatibility surface does not change the v2 route or the deterministic
+# tool policy; it only lets standard MCP hosts discover and call the same two
+# tools.
+STANDARD_PROTOCOL_VERSIONS = frozenset({"2025-03-26", "2025-06-18"})
 MCP_PATH = "/mcp"
 DEFAULT_MAX_REQUEST_BODY_BYTES = 65_536
 RECORD_TTL_SECONDS = 24 * 60 * 60
 SUPPORTED_METHODS = frozenset({"tools/list", "tools/call"})
 SUPPORTED_TOOL_NAMES = frozenset({"find_surf_windows", "explain_surf_window"})
+STANDARD_MCP_METHODS = frozenset({
+    "initialize", "notifications/initialized", "notifications/cancelled", "ping",
+    "resources/list", "resources/templates/list", "tools/list", "tools/call",
+})
 
 
 def _result_payload(result: LivePlanningResult, *, expires_at: int | None = None) -> dict[str, Any]:
@@ -68,7 +79,13 @@ def create_server(record_store: RecordStore, *, now: Callable[[], int] = unix_no
     def find_surf_windows(
         date: str, party_profile: dict[str, Any], preferred_area: str | None = None, time_range: str | None = None
     ) -> dict[str, Any]:
-        """Retrieve live evidence for Wrightsville Beach and store its decision for 24 hours."""
+        """Retrieve live evidence and store its decision for 24 hours.
+
+        ``party_profile`` must contain the canonical ``skill_level`` string and
+        may contain ``ages`` and ``accessibility_needs``. The adapter accepts a
+        legacy ``skill`` alias from generic MCP clients and normalizes it before
+        invoking AgentCore.
+        """
         result = planner(date, party_profile, preferred_area, time_range)
         if isinstance(result, tuple):
             return _error_result(*result)
@@ -179,31 +196,63 @@ def _validate_request(headers: dict[str, str], body: bytes, allowed_origins: tup
     origin = headers.get("origin")
     if origin is not None and origin not in allowed_origins:
         return 403, "origin_not_allowed", "Origin is not in the configured allowlist."
-    if headers.get("mcp-protocol-version") != PROTOCOL_VERSION:
-        return 400, "invalid_protocol_version", f"MCP-Protocol-Version must be {PROTOCOL_VERSION}."
     try:
         request = json.loads(body)
     except json.JSONDecodeError:
         return 400, "invalid_json", "Request body must be JSON."
     if not isinstance(request, dict) or request.get("jsonrpc") != "2.0":
         return 400, "invalid_json_rpc", "Request body must be a JSON-RPC 2.0 object."
-    if "id" not in request:
-        return 400, "missing_request_id", "A stateless MCP request must include a JSON-RPC id."
+    method = request.get("method")
+    if method is None and headers.get("mcp-protocol-version") is None:
+        return 400, "invalid_protocol_version", "The request must identify a supported MCP protocol."
     params = request.get("params")
+    if params is None:
+        params = {}
     if not isinstance(params, dict):
         return 400, "invalid_params", "Request params must be a JSON object."
+    wire_version = headers.get("mcp-protocol-version")
     metadata = params.get("_meta")
-    if not isinstance(metadata, dict):
-        return 400, "missing_request_metadata", "params._meta must carry the MCP v2 request envelope."
-    if metadata.get("io.modelcontextprotocol/protocolVersion") != PROTOCOL_VERSION:
-        return 400, "metadata_protocol_mismatch", "Request metadata must match MCP-Protocol-Version."
-    if not isinstance(metadata.get("io.modelcontextprotocol/clientCapabilities"), dict):
-        return 400, "missing_client_capabilities", "Request metadata must contain client capabilities."
-    method = request.get("method")
-    if method not in SUPPORTED_METHODS:
-        return 400, "unsupported_method", "This public demo supports only tools/list and tools/call."
-    if method == "tools/call" and params.get("name") not in SUPPORTED_TOOL_NAMES:
-        return 400, "unsupported_tool", "This public demo supports only its two read-only tools."
+    v2_request = wire_version == PROTOCOL_VERSION or (
+        isinstance(metadata, dict)
+        and metadata.get("io.modelcontextprotocol/protocolVersion") == PROTOCOL_VERSION
+    )
+    if v2_request:
+        if wire_version != PROTOCOL_VERSION:
+            return 400, "invalid_protocol_version", f"MCP-Protocol-Version must be {PROTOCOL_VERSION}."
+        if "id" not in request:
+            return 400, "missing_request_id", "A stateless MCP request must include a JSON-RPC id."
+        if not isinstance(metadata, dict):
+            return 400, "missing_request_metadata", "params._meta must carry the MCP v2 request envelope."
+        if metadata.get("io.modelcontextprotocol/protocolVersion") != PROTOCOL_VERSION:
+            return 400, "metadata_protocol_mismatch", "Request metadata must match MCP-Protocol-Version."
+        if not isinstance(metadata.get("io.modelcontextprotocol/clientCapabilities"), dict):
+            return 400, "missing_client_capabilities", "Request metadata must contain client capabilities."
+        if method not in SUPPORTED_METHODS:
+            return 400, "unsupported_method", "This public demo supports only tools/list and tools/call."
+        if method == "tools/call" and params.get("name") not in SUPPORTED_TOOL_NAMES:
+            return 400, "unsupported_tool", "This public demo supports only its two read-only tools."
+    else:
+        # Standard MCP hosts (including Codex) initialize with a body-level
+        # protocolVersion and omit both the v2 request header and _meta.
+        if require_agentcore_routing_headers:
+            return 400, "invalid_protocol_version", f"MCP-Protocol-Version must be {PROTOCOL_VERSION}."
+        if wire_version is not None and wire_version not in STANDARD_PROTOCOL_VERSIONS:
+            return 400, "invalid_protocol_version", "Unsupported standard MCP protocol version."
+        if method == "initialize":
+            if params.get("protocolVersion") not in STANDARD_PROTOCOL_VERSIONS:
+                return 400, "invalid_protocol_version", "Unsupported standard MCP protocol version."
+            if "id" not in request:
+                return 400, "missing_request_id", "The MCP initialize request must include an id."
+        elif method in {"notifications/initialized", "notifications/cancelled"}:
+            # JSON-RPC notifications intentionally have no id.
+            pass
+        elif method in STANDARD_MCP_METHODS:
+            if "id" not in request:
+                return 400, "missing_request_id", "An MCP request must include an id."
+            if method == "tools/call" and params.get("name") not in SUPPORTED_TOOL_NAMES:
+                return 400, "unsupported_tool", "This public demo supports only its two read-only tools."
+        else:
+            return 400, "unsupported_method", "This public demo supports only standard MCP discovery and its two read-only tools."
     if require_agentcore_routing_headers:
         if headers.get("mcp-method") != method:
             return 400, "method_mismatch", "Mcp-Method must match JSON-RPC method."
