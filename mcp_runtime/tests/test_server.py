@@ -1,197 +1,99 @@
 from __future__ import annotations
 
-import asyncio
+import json
 
-from mcp.server import MCPServer
-from mcp.client import Client
-from mcp_types import CallToolResult
 from starlette.testclient import TestClient
 
-from mcp_runtime.server import PROTOCOL_VERSION, _validate_request, create_agentcore_app, create_app, create_server
+from mcp_runtime.server import PROTOCOL_VERSION, _validate_request, create_app
+from mcp_runtime.exposure_control import InMemoryRequestBudget
+from surf.application import plan_fixture
+from surf.live_store import InMemoryRecordStore
 
 
-def test_v2_server_registers_only_the_two_read_only_tools():
-    async def run() -> None:
-        server = create_server()
-        tools = await server.list_tools()
-        assert isinstance(server, MCPServer)
-        assert {tool.name for tool in tools} == {"find_surf_windows", "explain_surf_window"}
-
-    asyncio.run(run())
-
-
-def test_find_then_explain_rebuilds_the_same_frozen_record_without_session_state():
-    async def run() -> None:
-        server = create_server()
-        found = await server.call_tool("find_surf_windows", {
-            "date": "2026-08-29",
-            "party_profile": {"skill_level": "beginner", "ages": [12, 40]},
-            "preferred_area": "wrightsville-beach",
-        })
-        assert found.result_type == "complete"
-        window = found.structured_content["windows"][0]
-        first = await server.call_tool("explain_surf_window", {"window_id": window["record"]["window_id"]})
-        second = await create_server().call_tool("explain_surf_window", {"window_id": window["record"]["window_id"]})
-        assert first.result_type == second.result_type == "complete"
-        assert first.structured_content["record"] == second.structured_content["record"] == window["record"]
-
-    asyncio.run(run())
-
-
-def test_sdk_v2_client_obtains_a_structured_frozen_recommendation():
-    async def run() -> None:
-        async with Client(create_server()) as client:
-            result = await client.call_tool("find_surf_windows", {
-                "date": "2026-08-29",
-                "party_profile": {"skill_level": "beginner", "ages": [12, 40]},
-            })
-        assert result.result_type == "complete"
-        assert result.structured_content["windows"][0]["record"]["decision"]["state"] == "recommended_window"
-
-    asyncio.run(run())
-
-
-def test_unknown_window_is_a_deterministic_structured_tool_error():
-    async def run() -> None:
-        result = await create_server().call_tool("explain_surf_window", {"window_id": "does-not-exist"})
-        assert isinstance(result, CallToolResult)
-        assert result.result_type == "complete"
-        assert result.is_error is True
-        assert result.structured_content["error"]["code"] == "unknown_window_id"
-
-    asyncio.run(run())
-
-
-def test_public_transport_uses_standard_json_rpc_routing_without_agentcore_headers():
-    body = (
-        b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_surf_windows",'
-        b'"arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",'
-        b'"io.modelcontextprotocol/clientCapabilities":{}}}}'
-    )
-    headers = {
-        "authorization": "Bearer test-token",
-        "origin": "http://localhost",
-        "mcp-protocol-version": PROTOCOL_VERSION,
+def _request(method: str, params: dict) -> dict:
+    return {
+        "jsonrpc": "2.0", "id": 1, "method": method,
+        "params": {**params, "_meta": {"io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
+                                           "io.modelcontextprotocol/clientCapabilities": {}}},
     }
-    assert _validate_request(headers, body, "test-token", ("http://localhost",)) is None
-    assert _validate_request({**headers, "origin": "https://untrusted.example"}, body, "test-token", ("http://localhost",))[1] == "origin_not_allowed"
-    assert _validate_request({key: value for key, value in headers.items() if key != "authorization"}, body, "test-token", ("http://localhost",))[1] == "unauthorized"
 
 
-def test_agentcore_routing_headers_remain_a_separate_strict_mode():
-    body = (
-        b'{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find_surf_windows",'
-        b'"arguments":{},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28",'
-        b'"io.modelcontextprotocol/clientCapabilities":{}}}}'
-    )
-    headers = {
-        "mcp-protocol-version": PROTOCOL_VERSION,
-        "mcp-method": "tools/call",
-        "mcp-name": "find_surf_windows",
-    }
-    assert _validate_request(headers, body, None, (), require_agentcore_routing_headers=True) is None
-    assert _validate_request(
-        {**headers, "mcp-method": "tools/list"}, body, None, (), require_agentcore_routing_headers=True
-    )[1] == "method_mismatch"
-    assert _validate_request(
-        {**headers, "mcp-name": "other"}, body, None, (), require_agentcore_routing_headers=True
-    )[1] == "name_mismatch"
+def _headers() -> dict[str, str]:
+    return {"MCP-Protocol-Version": PROTOCOL_VERSION, "Accept": "application/json, text/event-stream"}
 
 
-def test_public_transport_rejects_malformed_or_unsupported_protocol_requests():
-    headers = {"authorization": "Bearer test-token", "mcp-protocol-version": PROTOCOL_VERSION}
-    assert _validate_request(headers, b"not json", "test-token", ()) [1] == "invalid_json"
-    unsupported_method = (
-        b'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"_meta":'
-        b'{"io.modelcontextprotocol/protocolVersion":"2026-07-28",'
-        b'"io.modelcontextprotocol/clientCapabilities":{}}}}'
-    )
-    assert _validate_request(headers, unsupported_method, "test-token", ()) [1] == "unsupported_method"
-    unsupported_tool = unsupported_method.replace(b'"initialize"', b'"tools/call"').replace(
-        b'"_meta"', b'"name":"unreviewed_tool","_meta"'
-    )
-    assert _validate_request(headers, unsupported_tool, "test-token", ()) [1] == "unsupported_tool"
+def _planner(*args):
+    return plan_fixture("normal")
 
 
-def test_http_transport_accepts_matching_request_and_rejects_a_mismatch():
-    request = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {
-            "name": "find_surf_windows",
-            "arguments": {
-                "date": "2026-08-29",
-                "party_profile": {"skill_level": "beginner", "ages": [12, 40]},
-                "preferred_area": "wrightsville-beach",
-            },
-            "_meta": {
-                "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
-                "io.modelcontextprotocol/clientCapabilities": {},
-            },
-        },
-    }
-    headers = {
-        "Authorization": "Bearer test-token",
-        "Origin": "http://localhost",
-        "MCP-Protocol-Version": PROTOCOL_VERSION,
-        "Accept": "application/json, text/event-stream",
-    }
-    with TestClient(create_app(auth_token="test-token"), base_url="http://localhost:8000") as client:
-        accepted = client.post("/mcp", json=request, headers=headers)
-        rejected = client.post("/mcp", json={**request, "params": {**request["params"], "name": "wrong"}}, headers=headers)
-    assert accepted.status_code == 200
-    payload = accepted.json()
-    assert payload["result"]["resultType"] == "complete"
-    assert rejected.status_code == 400
-    assert rejected.json()["error"]["code"] == "unsupported_tool"
+def test_public_transport_is_unauthenticated_but_rejects_invalid_protocol_and_body():
+    headers = {"mcp-protocol-version": PROTOCOL_VERSION}
+    assert _validate_request(headers, b"not-json", ())[1] == "invalid_json"
+    assert _validate_request({}, b"{}", ())[1] == "invalid_protocol_version"
+    unsupported = _request("tools/call", {"name": "other", "arguments": {}})
+    assert _validate_request(headers, json.dumps(unsupported).encode(), ())[1] == "unsupported_tool"
 
 
-def test_http_transport_enforces_the_configured_request_size_limit():
-    request = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/list",
-        "params": {"_meta": {"io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION, "io.modelcontextprotocol/clientCapabilities": {}}},
-    }
-    headers = {
-        "Authorization": "Bearer test-token",
-        "MCP-Protocol-Version": PROTOCOL_VERSION,
-        "Accept": "application/json, text/event-stream",
-    }
-    with TestClient(create_app(auth_token="test-token", max_request_body_bytes=32), base_url="http://localhost:8000") as client:
-        response = client.post("/mcp", json=request, headers=headers)
-    assert response.status_code == 413
-    assert response.json()["error"]["code"] == "request_too_large"
+def test_live_find_and_explain_return_the_stored_record_without_bearer_or_requery():
+    store = InMemoryRecordStore()
+    planner_calls: list[tuple] = []
+
+    def planner(*args):
+        planner_calls.append(args)
+        return _planner(*args)
+
+    app = create_app(record_store=store, planner=planner, now=lambda: 1_000)
+    find_request = _request("tools/call", {"name": "find_surf_windows", "arguments": {
+        "date": "2026-08-22", "party_profile": {"skill_level": "beginner", "ages": [12, 40]},
+        "preferred_area": "wrightsville-beach",
+    }})
+    with TestClient(app, base_url="http://localhost:8000") as client:
+        find_response = client.post("/mcp", json=find_request, headers=_headers())
+        assert find_response.status_code == 200
+        window = find_response.json()["result"]["structuredContent"]["windows"][0]
+        assert window["retrieval"]["mode"] == "live"
+        assert window["record"]["window_id"] in store.records
+        explain_response = client.post("/mcp", json=_request("tools/call", {
+            "name": "explain_surf_window", "arguments": {"window_id": window["record"]["window_id"]},
+        }), headers=_headers())
+    assert explain_response.status_code == 200
+    assert explain_response.json()["result"]["structuredContent"]["record"] == window["record"]
+    assert len(planner_calls) == 1
 
 
-def test_stateless_runtime_rejects_get_streams():
-    with TestClient(create_app(auth_token="test-token"), base_url="http://localhost:8000") as client:
-        response = client.get("/mcp", headers={"Accept": "text/event-stream"})
-    assert response.status_code in {404, 405}
+def test_expired_and_unknown_window_ids_are_explicit_errors():
+    store = InMemoryRecordStore(records={"expired": ({"resultType": "complete"}, 100)})
+    app = create_app(record_store=store, planner=_planner, now=lambda: 101)
+    with TestClient(app, base_url="http://localhost:8000") as client:
+        expired = client.post("/mcp", json=_request("tools/call", {
+            "name": "explain_surf_window", "arguments": {"window_id": "expired"},
+        }), headers=_headers())
+        unknown = client.post("/mcp", json=_request("tools/call", {
+            "name": "explain_surf_window", "arguments": {"window_id": "unknown"},
+        }), headers=_headers())
+    assert expired.json()["result"]["structuredContent"]["error"]["code"] == "expired_window_id"
+    assert unknown.json()["result"]["structuredContent"]["error"]["code"] == "unknown_window_id"
 
 
-def test_agentcore_variant_relies_on_the_outer_iam_boundary_but_preserves_protocol_checks():
-    request = {
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "tools/call",
-        "params": {
-            "name": "find_surf_windows",
-            "arguments": {"date": "2026-08-29", "party_profile": {"skill_level": "beginner", "ages": [12, 40]}},
-            "_meta": {
-                "io.modelcontextprotocol/protocolVersion": PROTOCOL_VERSION,
-                "io.modelcontextprotocol/clientCapabilities": {},
-            },
-        },
-    }
-    headers = {
-        "MCP-Protocol-Version": PROTOCOL_VERSION,
-        "Mcp-Method": "tools/call",
-        "Mcp-Name": "find_surf_windows",
-        "Accept": "application/json, text/event-stream",
-    }
-    with TestClient(create_agentcore_app(), base_url="http://agentcore.internal:8000") as client:
-        response = client.post("/mcp", json=request, headers=headers)
-    assert response.status_code == 200
-    assert response.json()["result"]["resultType"] == "complete"
+def test_post_only_origin_and_request_size_boundaries_hold_without_inspecting_authorization():
+    app = create_app(record_store=InMemoryRecordStore(), planner=_planner,
+                     allowed_origins=("https://claude.ai",), max_request_body_bytes=2048)
+    with TestClient(app, base_url="http://localhost:8000") as client:
+        assert client.get("/mcp").status_code == 405
+        assert client.post("/mcp", json=_request("tools/list", {}),
+                           headers={**_headers(), "Origin": "https://chatgpt.com"}).status_code == 403
+        assert client.post("/mcp", content=b"x" * 2049, headers=_headers()).status_code == 413
+
+
+def test_valid_mcp_posts_consume_a_hard_budget_before_any_tool_or_live_source_runs():
+    budget = InMemoryRequestBudget(1)
+    app = create_app(record_store=InMemoryRecordStore(), planner=_planner, request_budget=budget)
+    with TestClient(app, base_url="http://localhost:8000") as client:
+        first = client.post("/mcp", json=_request("tools/list", {}), headers=_headers())
+        second = client.post("/mcp", json=_request("tools/list", {}), headers=_headers())
+        malformed = client.post("/mcp", content=b"not-json", headers=_headers())
+    assert first.status_code == 200
+    assert second.status_code == 429
+    assert second.json()["error"]["code"] == "demo_request_budget_exhausted"
+    assert malformed.status_code == 400
+    assert budget.count == 1

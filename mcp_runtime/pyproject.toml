@@ -6,6 +6,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
   "mangum==0.20.0",
   "mcp==2.0.0",
+  "requests==2.32.5",
   "uvicorn==0.52.4",
 ]
 

@@ -17,48 +17,58 @@ def _load_packager():
     return module
 
 
-def test_external_lambda_template_is_short_lived_and_has_no_network_or_token_escape_hatch():
+def test_public_live_template_has_rest_api_waf_ttl_and_no_function_url_or_bearer_path():
     template = (REPO_ROOT / "infra" / "external-mcp-demo" / "runtime.yaml").read_text()
-    artifact_template = (REPO_ROOT / "infra" / "external-mcp-demo" / "artifact-bucket.yaml").read_text()
-    assert "AWS::Lambda::Url" in template
-    assert "NoEcho: true" in template
-    assert "ssm:GetParameter" in template
-    assert "ssm:PutParameter" in template
-    assert "ssm:DeleteParameter" in template
-    assert "Type: Custom::DemoSecureString" in template
+    assert "AWS::ApiGateway::RestApi" in template
+    assert "AWS::ApiGateway::Method" in template
+    assert "HttpMethod: POST" in template
+    assert "AWS::WAFv2::WebACL" in template
+    assert "AWS::WAFv2::WebACLAssociation" in template
+    assert "Limit: 30" in template
+    assert "AggregateKeyType: IP" in template
+    assert "AggregateKeyType: CONSTANT" in template
+    assert "GlobalMcpPostRateLimit" in template
+    assert "Default: 60" in template
+    assert "ThrottlingRateLimit: !Ref ApiRateLimit" in template
+    assert "Default: 0.2" in template
+    assert "Default: 120" in template
+    assert "MCP_MAX_PUBLIC_POST_REQUESTS" in template
+    assert "AWS::Lambda::EventSourceMapping" in template
+    assert "AWS::CloudWatch::Alarm" in template
+    assert "Threshold: 40" in template
+    assert "AWS::Scheduler::Schedule" in template
+    assert "AWS::Budgets::Budget" in template
+    assert "ReservedConcurrentExecutions=0" not in template
+    assert "AWSManagedRulesCommonRuleSet" in template
     assert "ReservedConcurrentExecutions" in template
-    assert "LogRetentionDays" in template
-    assert "MCP_MAX_REQUEST_BODY_BYTES" in template
+    assert "dynamodb:GetItem, dynamodb:UpdateItem" in template
+    assert "lambda:PutFunctionConcurrency" in template
+    assert "TimeToLiveSpecification" in template
+    assert "AttributeName: expires_at" in template
+    assert "SSEEnabled: true" in template
+    assert "AWS::Lambda::Url" not in template
+    assert "InvokeFunctionUrl" not in template
+    assert "DemoBearerToken" not in template
+    assert "ssm:" not in template
     assert "AWS::EC2::" not in template
     assert "AWS::NATGateway" not in template
-    assert "MCP_AUTH_TOKEN:" not in template
-    assert "ArtifactObjectVersion" in template
-    assert "S3ObjectVersion: !Ref ArtifactObjectVersion" in template
-    assert "Token: !Ref DemoBearerToken" in template
-    assert "DemoBearerToken" not in template.split("Outputs:", 1)[1]
-    assert "AWS::S3::Bucket" in artifact_template
-    assert "AWS::NATGateway" not in artifact_template
-    assert "AWS::BedrockAgentCore" not in artifact_template
 
 
-def test_external_lambda_package_contains_only_the_frozen_service_sources(tmp_path: Path):
+def test_public_live_lambda_package_contains_live_sources_but_no_fixtures_or_strands(tmp_path: Path):
     packager = _load_packager()
-    archive = tmp_path / "external-mcp.zip"
+    archive = tmp_path / "live-mcp.zip"
     first = packager.package(archive, include_dependencies=False)
-    second = packager.package(tmp_path / "external-mcp-second.zip", include_dependencies=False)
+    second = packager.package(tmp_path / "live-mcp-second.zip", include_dependencies=False)
     with ZipFile(archive) as bundle:
         members = set(bundle.namelist())
     assert first == second
-    assert {
-        "mcp_runtime/lambda_entrypoint.py",
-        "mcp_runtime/server.py",
-        "surf/mcp_contract.py",
-        "fixtures/normal.json",
-        "fixtures/hazard.json",
-    } <= members
+    assert {"mcp_runtime/lambda_entrypoint.py", "mcp_runtime/server.py", "mcp_runtime/exposure_control.py",
+            "mcp_runtime/circuit_breaker.py", "surf/live_planner.py",
+            "surf/live_sources.py", "surf/live_store.py", "surf/sources/nws.py"} <= members
+    assert not any(name.startswith("fixtures/") for name in members)
+    assert "mcp_runtime/claude_desktop_bridge.py" not in members
     assert all(not name.startswith("strands") for name in members)
 
 
 def test_external_lambda_packager_targets_the_lambda_compatible_manylinux_baseline():
-    packager = _load_packager()
     assert "x86_64-manylinux2014" in (REPO_ROOT / "scripts" / "package_external_mcp_lambda.py").read_text()

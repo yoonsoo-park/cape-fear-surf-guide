@@ -2,6 +2,12 @@
 
 Verified: 2026-08-22
 
+> Historical compatibility evidence only. This document describes the earlier
+> frozen-record AgentCore spike; it is not the public judge endpoint. The
+> current public live MCP deployment is API Gateway REST + WAF + DynamoDB and
+> is documented in `docs/external-mcp-demo.md`. Do not use this document to
+> claim current AgentCore deployment compatibility for the live service.
+
 ## Problem
 
 Cape Fear Surf Guide's MCP service targets Python SDK v2 and protocol

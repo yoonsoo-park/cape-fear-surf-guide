@@ -63,32 +63,31 @@ billing invoice.
 - [Devpost draft](docs/devpost-draft.md)
 - [Submission checklist](docs/submission-checklist.md)
 - [AgentCore MCP v2 compatibility result](docs/agentcore-mcp-v2-spike.md)
-- [External HTTPS MCP frozen-demo runbook](docs/external-mcp-demo.md)
-- [Claude Desktop local-bridge verification runbook](docs/claude-desktop-mcp.md)
+- [Public live HTTPS MCP runbook](docs/external-mcp-demo.md)
+- [Claude Desktop and ChatGPT verification](docs/claude-desktop-mcp.md)
+- [Live source contract capture](docs/live-source-contract.md)
 
 Publishing the repository, uploading a video, submitting to Devpost, and
 publishing blog posts remain explicit human-approved actions.
 
-## MCP v2 frozen-demo runtime
+## Public live MCP v2 runtime
 
 The MCP service has its own Python SDK v2 runtime because the current Strands
-dependency requires MCP SDK v1. The service imports the same `surf` application
-and deterministic policy code; it does not duplicate a policy engine. Start it
-only after supplying a local bearer token through the process environment,
-never source control or a shell transcript:
+dependency requires MCP SDK v1. The service imports the same `surf` policy
+code; it does not duplicate a policy engine. The deployed public path requires
+an approved DynamoDB table name and makes live public-source requests:
 
 ```bash
 uv run --project mcp_runtime python -m mcp_runtime.server
 ```
 
-It exposes one authenticated, stateless Streamable HTTP `POST /mcp` endpoint
-on port 8000. The public mode requires protocol `2026-07-28`, validated
-JSON-RPC tool names, and an allowed `Origin` when supplied. It does not require
-the AgentCore-specific `Mcp-Method` or `Mcp-Name` headers. The frozen
-demonstration accepts the reviewed 2026-08-29 beginner profile and
-reconstructs `explain_surf_window(window_id)` from reviewed snapshots on each
-request. It deliberately returns a structured unavailable error instead of
-inventing coverage for another date, beach, time range, or party profile.
+It exposes one unauthenticated, stateless Streamable HTTP `POST /mcp` endpoint
+using protocol `2026-07-28`. It accepts Wrightsville Beach only and dates from
+today through six days ahead in `America/New_York`. Every `find_surf_windows`
+request retrieves NWS, NOAA, and Open-Meteo data live; source failure returns
+`insufficient_data` and never falls back to a fixture. It stores the exact
+random `window_id` decision in encrypted DynamoDB for 24 hours, and
+`explain_surf_window` returns that stored record without a live re-query.
 
 Run its isolated validation with:
 
@@ -101,9 +100,17 @@ The AgentCore-compatible container artifact is
 in `docs/agentcore-mcp-v2-spike.md`; deploying it still requires explicit AWS
 approval and the documented personal-account runtime controls.
 
-The separate Lambda Function URL implementation is a time-limited external
-demo only. Its SSM-backed bearer authentication, request bounds, rotation, and
-teardown requirements are in [the external MCP runbook](docs/external-mcp-demo.md).
+The public deployment uses API Gateway REST and AWS WAF, not a Lambda Function
+URL. WAF applies 30 requests per IP and 60 total `/mcp` POST requests per five
+minutes; API Gateway targets 0.2 requests per second with burst 2. A separate
+DynamoDB control record allows exactly 120 valid MCP POSTs in one 72-hour
+exposure. A private circuit breaker sets public Lambda concurrency to zero at
+the request budget, 40 starts per five minutes, or the configured expiry.
+It has short source timeouts, no VPC, short log retention, and least-privilege
+DynamoDB access.
+There is no bearer token, SSM SecureString, Cognito, Google login, OAuth 2.1,
+or Keychain requirement in the public path. Deployment remains separately
+human-approved; see [the external MCP runbook](docs/external-mcp-demo.md).
 
 Capture a reviewed live NWS alert response for offline replay only when a real
 identifying NWS `User-Agent` contact route has been selected:

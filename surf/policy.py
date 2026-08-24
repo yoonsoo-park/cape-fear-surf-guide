@@ -9,6 +9,7 @@ from .schema import (
 )
 
 REQUIRED_HAZARD_KIND = "nws_hazards"
+REQUIRED_LIVE_SOURCE_KINDS = frozenset({"nws_hazards", "nws_forecast", "noaa_tides", "marine_forecast"})
 
 
 def _window_id(snapshot_id: str, profile: PartyProfile, window: BeachWindow) -> str:
@@ -34,6 +35,12 @@ def decide(snapshot_id: str, profile: PartyProfile, window: BeachWindow,
     elif not hazards:
         decision = PolicyDecision(state=DecisionState.insufficient_data,
                                   reasons=("Required NWS hazard evidence is missing.",))
+    elif snapshot_id.startswith("live:") and any(item.source_kind in REQUIRED_LIVE_SOURCE_KINDS and item.freshness_state == FreshnessState.unavailable for item in evidence):
+        decision = PolicyDecision(state=DecisionState.insufficient_data,
+                                  reasons=("A required live source could not be retrieved or normalized.",))
+    elif snapshot_id.startswith("live:") and any(kind not in {item.source_kind for item in evidence} for kind in REQUIRED_LIVE_SOURCE_KINDS):
+        decision = PolicyDecision(state=DecisionState.insufficient_data,
+                                  reasons=("A required live source is missing from the evidence record.",))
     elif any(item.freshness_state != FreshnessState.current for item in hazards):
         decision = PolicyDecision(state=DecisionState.stale_data,
                                   reasons=("Required NWS hazard evidence is stale or unavailable.",))
