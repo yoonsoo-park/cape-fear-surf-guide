@@ -18,36 +18,36 @@ def _validate_user_agent(user_agent: str) -> None:
         raise ValueError("NWS User-Agent must contain a non-secret project identifier and contact route")
 
 
-def fetch_point(latitude: float, longitude: float, user_agent: str, session: Any = requests) -> dict[str, Any]:
+def fetch_point(latitude: float, longitude: float, user_agent: str, session: Any = requests, *, timeout: float = 15) -> dict[str, Any]:
     _validate_user_agent(user_agent)
     response = session.get(
         f"{NWS_API}/points/{latitude:.4f},{longitude:.4f}",
-        headers={"User-Agent": user_agent, "Accept": "application/geo+json"}, timeout=15,
+        headers={"User-Agent": user_agent, "Accept": "application/geo+json"}, timeout=timeout,
     )
     response.raise_for_status()
     return response.json()
 
 
-def fetch_active_alerts(zone: str, user_agent: str, session: Any = requests) -> dict[str, Any]:
+def fetch_active_alerts(zone: str, user_agent: str, session: Any = requests, *, timeout: float = 15) -> dict[str, Any]:
     if not zone.strip():
         raise ValueError("NWS zone is required")
     _validate_user_agent(user_agent)
     response = session.get(
         f"{NWS_API}/alerts/active", params={"zone": zone},
-        headers={"User-Agent": user_agent, "Accept": "application/geo+json"}, timeout=15,
+        headers={"User-Agent": user_agent, "Accept": "application/geo+json"}, timeout=timeout,
     )
     response.raise_for_status()
     return response.json()
 
 
-def fetch_zone_forecast(zone: str, user_agent: str, session: Any = requests) -> dict[str, Any]:
+def fetch_zone_forecast(zone: str, user_agent: str, session: Any = requests, *, timeout: float = 15) -> dict[str, Any]:
     """Fetch the official NWS forecast-zone product used for surf planning context."""
     if not zone.strip():
         raise ValueError("NWS zone is required")
     _validate_user_agent(user_agent)
     response = session.get(
         f"{NWS_API}/zones/forecast/{zone}/forecast",
-        headers={"User-Agent": user_agent, "Accept": "application/geo+json"}, timeout=15,
+        headers={"User-Agent": user_agent, "Accept": "application/geo+json"}, timeout=timeout,
     )
     response.raise_for_status()
     return response.json()

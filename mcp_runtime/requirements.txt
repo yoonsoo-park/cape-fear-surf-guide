@@ -2,4 +2,5 @@
 # Keep the MCP SDK line isolated from the root Strands environment, which
 # currently has an incompatible MCP dependency constraint.
 mcp==2.0.0
+requests==2.32.5
 uvicorn==0.52.4

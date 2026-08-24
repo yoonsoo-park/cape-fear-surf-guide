@@ -1,163 +1,80 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  Short-lived public HTTPS MCP demonstration using reviewed frozen snapshots.
-  This stack creates no VPC, NAT Gateway, EC2 instance, model, or live-data source.
+  Short-lived, public, read-only live MCP demo with hard request budget and
+  automatic circuit breaker. API Gateway REST and WAF are the public boundary.
 
 Parameters:
   ArtifactBucketName:
     Type: String
     AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
-    Description: Private bucket containing the reviewed Lambda deployment zip.
   ArtifactKey:
     Type: String
     AllowedPattern: '^.+$'
-    Description: Exact key of the reviewed Lambda deployment zip.
   ArtifactObjectVersion:
     Type: String
     AllowedPattern: '^.{1,1024}$'
-    Description: Immutable S3 object version of the reviewed Lambda deployment zip.
-  DemoBearerToken:
-    Type: String
-    NoEcho: true
-    MinLength: 32
-    Description: Short-lived demo bearer token. CloudFormation stores it only as the SecureString resource below.
-  DemoTokenParameterName:
-    Type: String
-    Default: /cape-fear-surf-guide/external-mcp-demo/bearer-token
-    AllowedPattern: '^/[A-Za-z0-9_.\-/]+$'
-    Description: Dedicated SSM SecureString path. Do not reuse a shared parameter.
-  TokenRotationId:
-    Type: String
-    Default: initial
-    AllowedPattern: '^[A-Za-z0-9_.-]{1,64}$'
-    Description: Change on every token rotation to replace warm Lambda environments after the SecureString update.
   AllowedOrigins:
     Type: CommaDelimitedList
     Default: https://claude.ai,https://chatgpt.com
-    Description: Browser origins allowed to send an Origin header. Requests without Origin still require the bearer token.
   MaxRequestBodyBytes:
     Type: Number
     Default: 65536
     MinValue: 1024
     MaxValue: 1048576
-    Description: Maximum JSON request body accepted by the MCP middleware.
   ReservedConcurrentExecutions:
     Type: Number
     Default: 2
+    AllowedValues: [2]
+  ApiRateLimit:
+    Type: Number
+    Default: 0.2
+    MinValue: 0.1
+    MaxValue: 1
+    Description: API Gateway steady-state POST /mcp target rate per second.
+  ApiBurstLimit:
+    Type: Number
+    Default: 2
     MinValue: 1
-    MaxValue: 10
-    Description: Hard concurrency cap for this small, read-only demo.
+    MaxValue: 2
+  GlobalRateLimit:
+    Type: Number
+    Default: 60
+    MinValue: 10
+    MaxValue: 60
+    Description: WAF all-client /mcp POST requests per five-minute window.
+  MaxPublicPostRequests:
+    Type: Number
+    Default: 120
+    AllowedValues: [120]
+  ExposureId:
+    Type: String
+    AllowedPattern: '^[A-Za-z0-9_-]{1,64}$'
+  PublicUntilUtc:
+    Type: String
+    AllowedPattern: '^20[0-9]{2}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}$'
+    Description: Required UTC expiry in YYYY-MM-DDTHH:MM:SS, at most 72 hours after deployment approval.
+  BudgetAlertAmountUsd:
+    Type: Number
+    Default: 10
+    AllowedValues: [10]
+  BudgetAlertEmail:
+    Type: String
+    AllowedPattern: '^.+@.+\..+$'
+    Description: Email recipient for the monthly $10 AWS Budget notification.
   LogRetentionDays:
     Type: Number
     Default: 7
     AllowedValues: [1, 3, 5, 7, 14, 30]
-    Description: Minimum CloudWatch Logs retention for this short-lived demo.
   FunctionName:
     Type: String
-    Default: cape-fear-external-mcp-demo
+    Default: cape-fear-public-live-mcp
     AllowedPattern: '^[a-zA-Z][a-zA-Z0-9-_]{0,63}$'
+  ApiStageName:
+    Type: String
+    Default: demo
+    AllowedPattern: '^[A-Za-z0-9_-]{1,32}$'
 
 Resources:
-  DemoTokenWriterLogGroup:
-    Type: AWS::Logs::LogGroup
-    DeletionPolicy: Delete
-    UpdateReplacePolicy: Delete
-    Properties:
-      LogGroupName: !Sub '/aws/lambda/${FunctionName}-token-writer'
-      RetentionInDays: !Ref LogRetentionDays
-
-  DemoTokenWriterRole:
-    Type: AWS::IAM::Role
-    Properties:
-      Description: Create and delete only the external-MCP demo SecureString without logging its value.
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: ManageOnlyDedicatedDemoSecureString
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - ssm:PutParameter
-                  - ssm:DeleteParameter
-                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DemoTokenParameterName}'
-        - PolicyName: WriteOnlyTokenWritersServiceLogs
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: !Sub '${DemoTokenWriterLogGroup.Arn}:*'
-
-  DemoTokenWriter:
-    Type: AWS::Lambda::Function
-    DependsOn: DemoTokenWriterLogGroup
-    Properties:
-      FunctionName: !Sub '${FunctionName}-token-writer'
-      Description: CloudFormation custom resource that stores the NoEcho demo input as one SecureString.
-      Handler: index.handler
-      MemorySize: 128
-      Role: !GetAtt DemoTokenWriterRole.Arn
-      Runtime: python3.11
-      Timeout: 30
-      Code:
-        ZipFile: |
-          import json
-          import urllib.request
-
-          import boto3
-
-          def respond(event, context, status, physical_id, reason=None):
-              body = json.dumps({
-                  "Status": status,
-                  "Reason": reason or f"See CloudWatch Log Stream: {context.log_stream_name}",
-                  "PhysicalResourceId": physical_id,
-                  "StackId": event["StackId"],
-                  "RequestId": event["RequestId"],
-                  "LogicalResourceId": event["LogicalResourceId"],
-                  "Data": {"ParameterName": physical_id},
-              }).encode("utf-8")
-              request = urllib.request.Request(event["ResponseURL"], data=body, method="PUT")
-              request.add_header("content-type", "")
-              request.add_header("content-length", str(len(body)))
-              urllib.request.urlopen(request).read()
-
-          def handler(event, context):
-              name = event["ResourceProperties"]["ParameterName"]
-              client = boto3.client("ssm")
-              try:
-                  if event["RequestType"] in ("Create", "Update"):
-                      client.put_parameter(
-                          Name=name,
-                          Value=event["ResourceProperties"]["Token"],
-                          Type="SecureString",
-                          Overwrite=True,
-                          Description="Short-lived bearer token for the Cape Fear frozen MCP demonstration.",
-                      )
-                  elif event["RequestType"] == "Delete":
-                      try:
-                          client.delete_parameter(Name=name)
-                      except client.exceptions.ParameterNotFound:
-                          pass
-                  respond(event, context, "SUCCESS", name)
-              except Exception as error:
-                  respond(event, context, "FAILED", name, type(error).__name__)
-
-  DemoToken:
-    Type: Custom::DemoSecureString
-    Properties:
-      ServiceToken: !GetAtt DemoTokenWriter.Arn
-      ParameterName: !Ref DemoTokenParameterName
-      Token: !Ref DemoBearerToken
-
   DemoLogGroup:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Delete
@@ -166,50 +83,86 @@ Resources:
       LogGroupName: !Sub '/aws/lambda/${FunctionName}'
       RetentionInDays: !Ref LogRetentionDays
 
+  CircuitBreakerLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${FunctionName}-circuit-breaker'
+      RetentionInDays: !Ref LogRetentionDays
+
+  LiveDecisionRecords:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: window_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: window_id
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  ExposureControl:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: exposure_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: exposure_id
+          KeyType: HASH
+      StreamSpecification:
+        StreamViewType: NEW_IMAGE
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+
   DemoFunctionRole:
     Type: AWS::IAM::Role
     Properties:
-      Description: Read only the one external-MCP demo SecureString and write its own Lambda service logs.
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
-            Principal:
-              Service: lambda.amazonaws.com
+            Principal: {Service: lambda.amazonaws.com}
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: ReadOnlyDemoToken
+        - PolicyName: LiveDecisionAndExposurePermitOnly
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Sid: ReadOnlyDedicatedSecureString
-                Effect: Allow
-                Action: ssm:GetParameter
-                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${DemoTokenParameterName}'
-        - PolicyName: WriteOnlyThisFunctionsServiceLogs
+              - Effect: Allow
+                Action: [dynamodb:PutItem, dynamodb:GetItem]
+                Resource: !GetAtt LiveDecisionRecords.Arn
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:UpdateItem]
+                Resource: !GetAtt ExposureControl.Arn
+        - PolicyName: WriteOnlyServiceLogs
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - Sid: WriteOnlyThisLogGroup
-                Effect: Allow
-                Action:
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub '${DemoLogGroup.Arn}:*'
-      Tags:
-        - Key: project
-          Value: CapeFearSurfGuide
-        - Key: purpose
-          Value: ExternalMcpFrozenDemo
 
   DemoFunction:
     Type: AWS::Lambda::Function
-    DependsOn:
-      - DemoLogGroup
-      - DemoToken
+    DependsOn: DemoLogGroup
     Properties:
       FunctionName: !Ref FunctionName
-      Description: Read-only frozen Cape Fear Surf Guide MCP demo. Never claims live conditions or safety.
+      Description: Read-only live Wrightsville Beach MCP; circuit-breaker protected.
       Architectures: [x86_64]
       Code:
         S3Bucket: !Ref ArtifactBucketName
@@ -220,59 +173,294 @@ Resources:
       ReservedConcurrentExecutions: !Ref ReservedConcurrentExecutions
       Role: !GetAtt DemoFunctionRole.Arn
       Runtime: python3.11
-      Timeout: 30
+      Timeout: 20
       Environment:
         Variables:
           MCP_ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
-          MCP_AUTH_TOKEN_PARAMETER: !Ref DemoTokenParameterName
           MCP_MAX_REQUEST_BODY_BYTES: !Ref MaxRequestBodyBytes
-          MCP_TOKEN_ROTATION_ID: !Ref TokenRotationId
-      Tags:
-        - Key: project
-          Value: CapeFearSurfGuide
-        - Key: purpose
-          Value: ExternalMcpFrozenDemo
-        - Key: retrieval-mode
-          Value: frozen_snapshot
+          MCP_RECORD_TABLE: !Ref LiveDecisionRecords
+          MCP_EXPOSURE_CONTROL_TABLE: !Ref ExposureControl
+          MCP_EXPOSURE_ID: !Ref ExposureId
+          MCP_MAX_PUBLIC_POST_REQUESTS: !Ref MaxPublicPostRequests
+          MCP_PUBLIC_UNTIL_UTC: !Ref PublicUntilUtc
 
-  DemoFunctionUrl:
-    Type: AWS::Lambda::Url
+  CircuitBreakerRole:
+    Type: AWS::IAM::Role
     Properties:
-      AuthType: NONE
-      TargetFunctionArn: !GetAtt DemoFunction.Arn
-      Cors:
-        AllowCredentials: false
-        AllowHeaders:
-          - Authorization
-          - Content-Type
-          - MCP-Protocol-Version
-        AllowMethods: [POST]
-        AllowOrigins: !Ref AllowedOrigins
-        MaxAge: 300
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: lambda.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ReadAndChangeOnlyExposureControl
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [dynamodb:GetItem, dynamodb:UpdateItem]
+                Resource: !GetAtt ExposureControl.Arn
+              - Effect: Allow
+                Action: lambda:PutFunctionConcurrency
+                Resource: !GetAtt DemoFunction.Arn
+              - Effect: Allow
+                Action: [dynamodb:DescribeStream, dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:ListStreams]
+                Resource: !GetAtt ExposureControl.StreamArn
+        - PolicyName: WriteOnlyCircuitBreakerLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub '${CircuitBreakerLogGroup.Arn}:*'
 
-  AllowPublicFunctionUrlInvoke:
-    Type: AWS::Lambda::Permission
+  CircuitBreakerFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: CircuitBreakerLogGroup
     Properties:
-      Action: lambda:InvokeFunctionUrl
-      FunctionName: !Ref DemoFunction
-      FunctionUrlAuthType: NONE
-      Principal: '*'
+      FunctionName: !Sub '${FunctionName}-circuit-breaker'
+      Description: Private exposure stop and approved manual-reenable controller.
+      Architectures: [x86_64]
+      Code:
+        S3Bucket: !Ref ArtifactBucketName
+        S3Key: !Ref ArtifactKey
+        S3ObjectVersion: !Ref ArtifactObjectVersion
+      Handler: mcp_runtime.circuit_breaker.handler
+      MemorySize: 128
+      ReservedConcurrentExecutions: 1
+      Role: !GetAtt CircuitBreakerRole.Arn
+      Runtime: python3.11
+      Timeout: 10
+      Environment:
+        Variables:
+          MCP_EXPOSURE_CONTROL_TABLE: !Ref ExposureControl
+          MCP_EXPOSURE_ID: !Ref ExposureId
+          MCP_MAX_PUBLIC_POST_REQUESTS: !Ref MaxPublicPostRequests
+          MCP_PUBLIC_UNTIL_UTC: !Ref PublicUntilUtc
+          MCP_PUBLIC_FUNCTION_NAME: !Ref DemoFunction
+          MCP_NORMAL_RESERVED_CONCURRENCY: !Ref ReservedConcurrentExecutions
 
-  AllowFunctionUrlServiceInvoke:
+  ExposureControlStreamMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt ExposureControl.StreamArn
+      FunctionName: !Ref CircuitBreakerFunction
+      StartingPosition: LATEST
+      BatchSize: 10
+      MaximumRetryAttempts: 2
+
+  McpRestApi:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: !Sub '${FunctionName}-api'
+      Description: POST-only public MCP v2026-07-28 endpoint.
+      EndpointConfiguration: {Types: [REGIONAL]}
+
+  McpResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref McpRestApi
+      ParentId: !GetAtt McpRestApi.RootResourceId
+      PathPart: mcp
+
+  McpPostMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      RestApiId: !Ref McpRestApi
+      ResourceId: !Ref McpResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      ApiKeyRequired: false
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DemoFunction.Arn}/invocations'
+
+  AllowApiGatewayInvoke:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
       FunctionName: !Ref DemoFunction
-      InvokedViaFunctionUrl: true
-      Principal: '*'
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${McpRestApi}/*/POST/mcp'
+
+  McpDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: McpPostMethod
+    Properties:
+      RestApiId: !Ref McpRestApi
+
+  McpStage:
+    Type: AWS::ApiGateway::Stage
+    Properties:
+      RestApiId: !Ref McpRestApi
+      DeploymentId: !Ref McpDeployment
+      StageName: !Ref ApiStageName
+      TracingEnabled: false
+      MethodSettings:
+        - HttpMethod: POST
+          ResourcePath: /mcp
+          MetricsEnabled: true
+          LoggingLevel: 'OFF'
+          DataTraceEnabled: false
+          ThrottlingRateLimit: !Ref ApiRateLimit
+          ThrottlingBurstLimit: !Ref ApiBurstLimit
+
+  PublicMcpWebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${FunctionName}-web-acl'
+      Scope: REGIONAL
+      DefaultAction: {Allow: {}}
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${FunctionName}-web-acl'
+        SampledRequestsEnabled: false
+      Rules:
+        - Name: RateLimitThirtyPerFiveMinutesPerIp
+          Priority: 0
+          Action: {Block: {}}
+          Statement:
+            RateBasedStatement:
+              AggregateKeyType: IP
+              Limit: 30
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: rate-limit-30-per-five-minutes
+            SampledRequestsEnabled: false
+        - Name: GlobalMcpPostRateLimit
+          Priority: 1
+          Action: {Block: {}}
+          Statement:
+            RateBasedStatement:
+              AggregateKeyType: CONSTANT
+              Limit: !Ref GlobalRateLimit
+              ScopeDownStatement:
+                AndStatement:
+                  Statements:
+                    - ByteMatchStatement:
+                        FieldToMatch: {UriPath: {}}
+                        PositionalConstraint: EXACTLY
+                        SearchString: /mcp
+                        TextTransformations: [{Priority: 0, Type: NONE}]
+                    - ByteMatchStatement:
+                        FieldToMatch: {Method: {}}
+                        PositionalConstraint: EXACTLY
+                        SearchString: POST
+                        TextTransformations: [{Priority: 0, Type: NONE}]
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: global-mcp-post-rate-limit
+            SampledRequestsEnabled: false
+        - Name: AWSManagedCommonRuleSet
+          Priority: 2
+          OverrideAction: {None: {}}
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: aws-managed-common-rule-set
+            SampledRequestsEnabled: false
+
+  PublicMcpWebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      WebACLArn: !GetAtt PublicMcpWebAcl.Arn
+      ResourceArn: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}::/restapis/${McpRestApi}/stages/${McpStage}'
+
+  VolumeAlarmTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${FunctionName}-volume-alarm'
+
+  CircuitBreakerAlarmSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref VolumeAlarmTopic
+      Protocol: lambda
+      Endpoint: !GetAtt CircuitBreakerFunction.Arn
+
+  AllowSnsCircuitBreakerInvoke:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref CircuitBreakerFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Ref VolumeAlarmTopic
+
+  InvocationVolumeAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Stop public MCP after 40 Lambda starts in five minutes.
+      Namespace: AWS/Lambda
+      MetricName: Invocations
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref DemoFunction
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 40
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref VolumeAlarmTopic]
+
+  SchedulerInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: scheduler.amazonaws.com}
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeOnlyCircuitBreaker
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt CircuitBreakerFunction.Arn
+
+  PublicExposureExpiry:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Sub '${FunctionName}-expiry'
+      FlexibleTimeWindow: {Mode: 'OFF'}
+      ScheduleExpression: !Sub 'at(${PublicUntilUtc})'
+      ScheduleExpressionTimezone: UTC
+      Target:
+        Arn: !GetAtt CircuitBreakerFunction.Arn
+        RoleArn: !GetAtt SchedulerInvokeRole.Arn
+        Input: '{"action":"disable","reason":"scheduled_expiry"}'
+
+  MonthlyCostBudget:
+    Type: AWS::Budgets::Budget
+    Properties:
+      Budget:
+        BudgetName: !Sub '${FunctionName}-monthly-cost-alert'
+        BudgetLimit: {Amount: !Ref BudgetAlertAmountUsd, Unit: USD}
+        BudgetType: COST
+        TimeUnit: MONTHLY
+        NotificationsWithSubscribers:
+          - Notification:
+              NotificationType: ACTUAL
+              ComparisonOperator: GREATER_THAN
+              Threshold: 100
+              ThresholdType: PERCENTAGE
+            Subscribers:
+              - SubscriptionType: EMAIL
+                Address: !Ref BudgetAlertEmail
 
 Outputs:
   McpEndpoint:
-    Description: HTTPS MCP endpoint. Share only for the approved short-lived demo and always with a separate bearer token channel.
-    Value: !GetAtt DemoFunctionUrl.FunctionUrl
-  TokenParameterName:
-    Description: Dedicated demo token parameter. Its value is intentionally never an output.
-    Value: !Ref DemoTokenParameterName
-  TeardownStack:
-    Description: Delete this stack after recording to revoke the Function URL, Lambda, log group, and SecureString.
-    Value: !Ref AWS::StackName
+    Description: Public HTTPS MCP endpoint. It automatically stops at 120 valid requests or PublicUntilUtc.
+    Value: !Sub 'https://${McpRestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${McpStage}/mcp'
+  ExposureControlTableName:
+    Value: !Ref ExposureControl
+  CircuitBreakerFunctionName:
+    Value: !Ref CircuitBreakerFunction

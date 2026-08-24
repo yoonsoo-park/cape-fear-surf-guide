@@ -11,7 +11,6 @@ COPY mcp_runtime/pyproject.toml mcp_runtime/uv.lock /app/mcp_runtime/
 RUN cd /app/mcp_runtime && uv sync --frozen --no-dev --no-install-project
 
 COPY surf /app/surf
-COPY fixtures /app/fixtures
 COPY mcp_runtime/mcp_runtime /app/mcp_runtime/mcp_runtime
 ENV PYTHONPATH=/app
 EXPOSE 8000
