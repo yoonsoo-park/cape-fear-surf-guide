@@ -63,6 +63,7 @@ billing invoice.
 - [Devpost draft](docs/devpost-draft.md)
 - [Submission checklist](docs/submission-checklist.md)
 - [AgentCore MCP v2 compatibility result](docs/agentcore-mcp-v2-spike.md)
+- [AgentCore live Strands-agent deployment path](docs/agentcore-live-agent.md)
 - [Public live HTTPS MCP runbook](docs/external-mcp-demo.md)
 - [Claude Desktop and ChatGPT verification](docs/claude-desktop-mcp.md)
 - [Live source contract capture](docs/live-source-contract.md)
@@ -100,8 +101,9 @@ The AgentCore-compatible container artifact is
 in `docs/agentcore-mcp-v2-spike.md`; deploying it still requires explicit AWS
 approval and the documented personal-account runtime controls.
 
-The public deployment uses API Gateway REST and AWS WAF, not a Lambda Function
-URL. WAF applies 30 requests per IP and 60 total `/mcp` POST requests per five
+The judge-gated deployment uses API Gateway REST and AWS WAF, not a Lambda Function
+URL. `POST /mcp` requires a manually issued `x-api-key`; request live-demo
+access at `yoonsoo@duck.com`. WAF applies 30 requests per IP and 60 total `/mcp` POST requests per five
 minutes; API Gateway targets 0.2 requests per second with burst 2. A separate
 DynamoDB control record allows exactly 120 valid MCP POSTs in one 72-hour
 exposure. A private circuit breaker sets public Lambda concurrency to zero at
@@ -109,7 +111,7 @@ the request budget, 40 starts per five minutes, or the configured expiry.
 It has short source timeouts, no VPC, short log retention, and least-privilege
 DynamoDB access.
 There is no bearer token, SSM SecureString, Cognito, Google login, OAuth 2.1,
-or Keychain requirement in the public path. Deployment remains separately
+or Keychain requirement in the judge-gated path. Deployment remains separately
 human-approved; see [the external MCP runbook](docs/external-mcp-demo.md).
 
 Capture a reviewed live NWS alert response for offline replay only when a real

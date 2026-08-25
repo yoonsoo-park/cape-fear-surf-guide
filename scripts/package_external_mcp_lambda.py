@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the public live MCP Lambda zip without credentials or fixture fallback."""
+"""Build the API-key-gated live MCP Lambda zip without credentials or fixtures."""
 
 from __future__ import annotations
 
@@ -18,7 +18,7 @@ FIXED_TIMESTAMP = (2026, 8, 22, 0, 0, 0)
 def _source_files() -> dict[Path, str]:
     """Return only the MCP service and shared live deterministic policy modules."""
     files: dict[Path, str] = {}
-    for name in ("__init__.py", "server.py", "lambda_entrypoint.py", "exposure_control.py", "circuit_breaker.py"):
+    for name in ("__init__.py", "agentcore_planner.py", "server.py", "lambda_entrypoint.py", "exposure_control.py", "circuit_breaker.py"):
         path = REPO_ROOT / "mcp_runtime" / "mcp_runtime" / name
         files[path] = f"mcp_runtime/{path.name}"
     for name in ("__init__.py", "brief.py", "live_planner.py", "live_sources.py", "live_store.py", "locations.py", "policy.py", "schema.py"):

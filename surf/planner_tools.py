@@ -19,7 +19,13 @@ def _record(tool_context: ToolContext, name: str, arguments: dict[str, Any], out
 
 
 def _evidence(tool_context: ToolContext, source_kind: str) -> list[dict[str, Any]]:
-    return [item for item in _state(tool_context)["fixture_evidence"] if item["source_kind"] == source_kind]
+    evidence = _state(tool_context).get("evidence", _state(tool_context).get("fixture_evidence", []))
+    aliases = {
+        "nws_surf_zone_forecast": {"nws_surf_zone_forecast", "nws_forecast"},
+        "noaa_tide_predictions": {"noaa_tide_predictions", "noaa_tides"},
+    }
+    accepted_kinds = aliases.get(source_kind, {source_kind})
+    return [item for item in evidence if item["source_kind"] in accepted_kinds]
 
 
 @tool(context=True)

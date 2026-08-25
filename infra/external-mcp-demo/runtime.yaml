@@ -1,7 +1,7 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: >-
-  Short-lived, public, read-only live MCP demo with hard request budget and
-  automatic circuit breaker. API Gateway REST and WAF are the public boundary.
+  API-key-gated, read-only live MCP demo with hard request budget and automatic
+  circuit breaker. API Gateway REST and WAF are the public boundary.
 
 Parameters:
   ArtifactBucketName:
@@ -13,6 +13,10 @@ Parameters:
   ArtifactObjectVersion:
     Type: String
     AllowedPattern: '^.{1,1024}$'
+  AgentCoreRuntimeArn:
+    Type: String
+    AllowedPattern: '^arn:aws:bedrock-agentcore:[a-z0-9-]+:[0-9]{12}:runtime/.+$'
+    Description: Runtime ARN output from the separate Cape Fear AgentCore stack.
   AllowedOrigins:
     Type: CommaDelimitedList
     Default: https://claude.ai,https://chatgpt.com
@@ -27,10 +31,10 @@ Parameters:
     AllowedValues: [2]
   ApiRateLimit:
     Type: Number
-    Default: 0.2
+    Default: 1
     MinValue: 0.1
     MaxValue: 1
-    Description: API Gateway steady-state POST /mcp target rate per second.
+    Description: API Gateway steady-state POST /mcp target rate per second; standard MCP hosts perform a short handshake burst.
   ApiBurstLimit:
     Type: Number
     Default: 2
@@ -156,13 +160,24 @@ Resources:
               - Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub '${DemoLogGroup.Arn}:*'
+        - PolicyName: InvokeOnlyCapeFearAgentCoreRuntime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock-agentcore:InvokeAgentRuntime
+                # DEFAULT is an AgentCore endpoint resource. Invocation
+                # authorization evaluates both runtime and endpoint.
+                Resource:
+                  - !Ref AgentCoreRuntimeArn
+                  - !Sub '${AgentCoreRuntimeArn}/runtime-endpoint/DEFAULT'
 
   DemoFunction:
     Type: AWS::Lambda::Function
     DependsOn: DemoLogGroup
     Properties:
       FunctionName: !Ref FunctionName
-      Description: Read-only live Wrightsville Beach MCP; circuit-breaker protected.
+      Description: API-key-gated live Wrightsville Beach MCP; circuit-breaker protected.
       Architectures: [x86_64]
       Code:
         S3Bucket: !Ref ArtifactBucketName
@@ -173,7 +188,7 @@ Resources:
       ReservedConcurrentExecutions: !Ref ReservedConcurrentExecutions
       Role: !GetAtt DemoFunctionRole.Arn
       Runtime: python3.11
-      Timeout: 20
+      Timeout: 30
       Environment:
         Variables:
           MCP_ALLOWED_ORIGINS: !Join [',', !Ref AllowedOrigins]
@@ -183,6 +198,7 @@ Resources:
           MCP_EXPOSURE_ID: !Ref ExposureId
           MCP_MAX_PUBLIC_POST_REQUESTS: !Ref MaxPublicPostRequests
           MCP_PUBLIC_UNTIL_UTC: !Ref PublicUntilUtc
+          MCP_AGENTCORE_RUNTIME_ARN: !Ref AgentCoreRuntimeArn
 
   CircuitBreakerRole:
     Type: AWS::IAM::Role
@@ -271,7 +287,7 @@ Resources:
       ResourceId: !Ref McpResource
       HttpMethod: POST
       AuthorizationType: NONE
-      ApiKeyRequired: false
+      ApiKeyRequired: true
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
@@ -306,6 +322,18 @@ Resources:
           DataTraceEnabled: false
           ThrottlingRateLimit: !Ref ApiRateLimit
           ThrottlingBurstLimit: !Ref ApiBurstLimit
+
+  JudgeAccessUsagePlan:
+    Type: AWS::ApiGateway::UsagePlan
+    Properties:
+      UsagePlanName: !Sub '${FunctionName}-judge-access'
+      Description: Keys are issued manually to verified judge requests and are never stored in this stack.
+      ApiStages:
+        - ApiId: !Ref McpRestApi
+          Stage: !Ref McpStage
+      Throttle:
+        RateLimit: !Ref ApiRateLimit
+        BurstLimit: !Ref ApiBurstLimit
 
   PublicMcpWebAcl:
     Type: AWS::WAFv2::WebACL
@@ -446,21 +474,24 @@ Resources:
         BudgetLimit: {Amount: !Ref BudgetAlertAmountUsd, Unit: USD}
         BudgetType: COST
         TimeUnit: MONTHLY
-        NotificationsWithSubscribers:
-          - Notification:
-              NotificationType: ACTUAL
-              ComparisonOperator: GREATER_THAN
-              Threshold: 100
-              ThresholdType: PERCENTAGE
-            Subscribers:
-              - SubscriptionType: EMAIL
-                Address: !Ref BudgetAlertEmail
+      NotificationsWithSubscribers:
+        - Notification:
+            NotificationType: ACTUAL
+            ComparisonOperator: GREATER_THAN
+            Threshold: 100
+            ThresholdType: PERCENTAGE
+          Subscribers:
+            - SubscriptionType: EMAIL
+              Address: !Ref BudgetAlertEmail
 
 Outputs:
   McpEndpoint:
-    Description: Public HTTPS MCP endpoint. It automatically stops at 120 valid requests or PublicUntilUtc.
+    Description: API-key-gated HTTPS MCP endpoint. It automatically stops at 120 valid requests or PublicUntilUtc.
     Value: !Sub 'https://${McpRestApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${McpStage}/mcp'
   ExposureControlTableName:
     Value: !Ref ExposureControl
   CircuitBreakerFunctionName:
     Value: !Ref CircuitBreakerFunction
+  JudgeAccessUsagePlanId:
+    Description: Create and associate individual API keys manually; never place key values in CloudFormation.
+    Value: !Ref JudgeAccessUsagePlan

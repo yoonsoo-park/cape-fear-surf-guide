@@ -1,0 +1,116 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Dedicated AgentCore HTTP Runtime for Cape Fear's bounded live Strands planner.
+  Deploy only after an explicit personal-account, budget, retention, and smoke-test approval.
+
+Parameters:
+  ArtifactBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+    Description: Private versioned S3 bucket containing the direct-code ZIP artifact.
+  ArtifactKey:
+    Type: String
+    AllowedPattern: '^.+$'
+    Description: S3 object key for the direct-code ZIP artifact.
+  ArtifactObjectVersion:
+    Type: String
+    AllowedPattern: '^.{3,1024}$'
+    Description: Immutable S3 VersionId of the direct-code ZIP artifact.
+  RuntimeName:
+    Type: String
+    Default: CapeFearLiveStrandsAgent
+    AllowedPattern: '^[a-zA-Z][a-zA-Z0-9_]{0,47}$'
+  ModelId:
+    Type: String
+    Default: us.amazon.nova-lite-v1:0
+    AllowedPattern: '^us\.amazon\.nova-lite-v1:0$'
+  InferenceProfileArn:
+    Type: String
+    Default: arn:aws:bedrock:us-east-1::inference-profile/us.amazon.nova-lite-v1:0
+    Description: Approved Nova Lite inference-profile ARN for the selected personal AWS account.
+
+Resources:
+  RuntimeExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: Least-privilege role for Cape Fear's AgentCore-hosted live Strands planner.
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: {Service: bedrock-agentcore.amazonaws.com}
+            Action: sts:AssumeRole
+            Condition: {StringEquals: {aws:SourceAccount: !Ref AWS::AccountId}}
+      Policies:
+        - PolicyName: AgentCoreRuntimeLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:DescribeLogGroups, logs:DescribeLogStreams]
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*'
+              - Effect: Allow
+                Action: logs:PutResourcePolicy
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/bedrock-agentcore/runtimes/${RuntimeName}-*'
+        - PolicyName: InvokeOnlyApprovedNovaLiteInferenceProfile
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource: !Ref InferenceProfileArn
+              # Bedrock requires the profile plus each destination foundation
+              # model. The condition prevents direct foundation-model calls.
+              - Effect: Allow
+                Action: [bedrock:InvokeModel, bedrock:InvokeModelWithResponseStream]
+                Resource:
+                  - 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0'
+                  - 'arn:aws:bedrock:us-east-2::foundation-model/amazon.nova-lite-v1:0'
+                  - 'arn:aws:bedrock:us-west-2::foundation-model/amazon.nova-lite-v1:0'
+                Condition:
+                  StringLike: {bedrock:InferenceProfileArn: !Ref InferenceProfileArn}
+        - PolicyName: ReadOnlyRuntimeArtifact
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:GetObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${ArtifactBucketName}/${ArtifactKey}'
+      Tags:
+        - {Key: project, Value: CapeFearSurfGuide}
+        - {Key: purpose, Value: LiveStrandsAgent}
+
+  Runtime:
+    Type: AWS::BedrockAgentCore::Runtime
+    Properties:
+      AgentRuntimeName: !Ref RuntimeName
+      Description: Live Cape Fear evidence planner; deterministic policy finalizes every safety decision before Strands explains it.
+      RoleArn: !GetAtt RuntimeExecutionRole.Arn
+      AgentRuntimeArtifact:
+        CodeConfiguration:
+          Code:
+            S3:
+              Bucket: !Ref ArtifactBucketName
+              Prefix: !Ref ArtifactKey
+              VersionId: !Ref ArtifactObjectVersion
+          Runtime: PYTHON_3_11
+          EntryPoint: [agentcore_live_entrypoint.py]
+      ProtocolConfiguration: HTTP
+      NetworkConfiguration: {NetworkMode: PUBLIC}
+      EnvironmentVariables: {CAPE_FEAR_MODEL_ID: !Ref ModelId}
+      LifecycleConfiguration: {IdleRuntimeSessionTimeout: 60, MaxLifetime: 1800}
+      Tags:
+        project: CapeFearSurfGuide
+        purpose: LiveStrandsAgent
+        retention: delete-after-judged-demo
+
+Outputs:
+  RuntimeArn:
+    Value: !GetAtt Runtime.AgentRuntimeArn
+  RuntimeId:
+    Value: !GetAtt Runtime.AgentRuntimeId
+  RuntimeVersion:
+    Value: !GetAtt Runtime.AgentRuntimeVersion

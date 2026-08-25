@@ -1,4 +1,4 @@
-"""API Gateway REST adapter for the unauthenticated public live MCP demo."""
+"""API Gateway REST adapter for the API-key-gated live MCP demo."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from mcp.server.transport_security import TransportSecuritySettings
 from surf.live_store import DynamoDbRecordStore
 
 from .exposure_control import DynamoDbRequestBudget, ExposureSettings
+from .agentcore_planner import AgentCorePlanner
 from .server import DEFAULT_MAX_REQUEST_BODY_BYTES, create_app
 
 
@@ -37,6 +38,7 @@ def create_lambda_app() -> Any:
         max_request_body_bytes=_max_request_body_bytes_from_environment(),
         transport_security=TransportSecuritySettings(enable_dns_rebinding_protection=False),
         request_budget=DynamoDbRequestBudget(ExposureSettings.from_environment(os.environ)),
+        planner=AgentCorePlanner.from_environment(),
     )
 
 

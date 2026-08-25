@@ -55,6 +55,13 @@ Phase 2 therefore uses `MCPServer`, validates `MCP-Protocol-Version` against req
 
 Amazon Bedrock AgentCore documentation checked on 2026-08-22 still shows the older `FastMCP`, client initialization, and `Mcp-Session-Id` surface. This is a verified documentation mismatch, not proof that the runtime is incompatible. Phase 3 must test whether AgentCore passes the SDK v2 and `2026-07-28` contract unchanged. If it does not, the project keeps standalone stateless Streamable HTTP and cuts AgentCore deployment rather than downgrading the protocol or introducing session coupling.
 
+On 2026-08-24, a compatibility layer was added at the same API-key-gated
+public boundary for standard MCP hosts that still initialize with
+`2025-06-18` (notably Codex 0.144.x). It delegates initialization, discovery,
+and the two read-only tool calls to the same SDK server and deterministic policy;
+the judge-facing `2026-07-28` envelope and AgentCore strict routing contract
+remain unchanged.
+
 Official sources:
 
 - https://modelcontextprotocol.io/specification/2026-07-28

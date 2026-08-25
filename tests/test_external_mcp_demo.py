@@ -17,7 +17,7 @@ def _load_packager():
     return module
 
 
-def test_public_live_template_has_rest_api_waf_ttl_and_no_function_url_or_bearer_path():
+def test_judge_gated_live_template_has_api_key_rest_api_waf_ttl_and_no_function_url_or_bearer_path():
     template = (REPO_ROOT / "infra" / "external-mcp-demo" / "runtime.yaml").read_text()
     assert "AWS::ApiGateway::RestApi" in template
     assert "AWS::ApiGateway::Method" in template
@@ -30,7 +30,7 @@ def test_public_live_template_has_rest_api_waf_ttl_and_no_function_url_or_bearer
     assert "GlobalMcpPostRateLimit" in template
     assert "Default: 60" in template
     assert "ThrottlingRateLimit: !Ref ApiRateLimit" in template
-    assert "Default: 0.2" in template
+    assert "Default: 1" in template
     assert "Default: 120" in template
     assert "MCP_MAX_PUBLIC_POST_REQUESTS" in template
     assert "AWS::Lambda::EventSourceMapping" in template
@@ -38,6 +38,12 @@ def test_public_live_template_has_rest_api_waf_ttl_and_no_function_url_or_bearer
     assert "Threshold: 40" in template
     assert "AWS::Scheduler::Schedule" in template
     assert "AWS::Budgets::Budget" in template
+    assert "ApiKeyRequired: true" in template
+    assert "AWS::ApiGateway::UsagePlan" in template
+    assert "AgentCoreRuntimeArn" in template
+    assert "bedrock-agentcore:InvokeAgentRuntime" in template
+    assert "MCP_AGENTCORE_RUNTIME_ARN" in template
+    assert "Timeout: 30" in template
     assert "ReservedConcurrentExecutions=0" not in template
     assert "AWSManagedRulesCommonRuleSet" in template
     assert "ReservedConcurrentExecutions" in template
@@ -62,7 +68,7 @@ def test_public_live_lambda_package_contains_live_sources_but_no_fixtures_or_str
     with ZipFile(archive) as bundle:
         members = set(bundle.namelist())
     assert first == second
-    assert {"mcp_runtime/lambda_entrypoint.py", "mcp_runtime/server.py", "mcp_runtime/exposure_control.py",
+    assert {"mcp_runtime/lambda_entrypoint.py", "mcp_runtime/server.py", "mcp_runtime/agentcore_planner.py", "mcp_runtime/exposure_control.py",
             "mcp_runtime/circuit_breaker.py", "surf/live_planner.py",
             "surf/live_sources.py", "surf/live_store.py", "surf/sources/nws.py"} <= members
     assert not any(name.startswith("fixtures/") for name in members)

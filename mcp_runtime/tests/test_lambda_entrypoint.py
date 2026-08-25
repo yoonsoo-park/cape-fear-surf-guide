@@ -21,7 +21,7 @@ def test_lambda_environment_parses_explicit_origins_and_size(monkeypatch: pytest
         _max_request_body_bytes_from_environment()
 
 
-def test_api_gateway_rest_adapter_accepts_an_unauthenticated_tools_list(monkeypatch: pytest.MonkeyPatch):
+def test_api_gateway_rest_adapter_accepts_a_gateway_authenticated_tools_list(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("MCP_RECORD_TABLE", "live-records")
     monkeypatch.setenv("MCP_EXPOSURE_CONTROL_TABLE", "exposure-control")
     monkeypatch.setenv("MCP_EXPOSURE_ID", "test")
@@ -29,6 +29,7 @@ def test_api_gateway_rest_adapter_accepts_an_unauthenticated_tools_list(monkeypa
     monkeypatch.setenv("MCP_PUBLIC_UNTIL_UTC", "2099-01-01T00:00:00")
     monkeypatch.setattr(lambda_entrypoint, "DynamoDbRecordStore", lambda _: InMemoryRecordStore())
     monkeypatch.setattr(lambda_entrypoint, "DynamoDbRequestBudget", lambda _: InMemoryRequestBudget(120))
+    monkeypatch.setattr(lambda_entrypoint.AgentCorePlanner, "from_environment", lambda: lambda *args: None)
     event = {
         "resource": "/mcp", "path": "/mcp", "httpMethod": "POST", "headers": {
             "content-type": "application/json", "accept": "application/json, text/event-stream",
