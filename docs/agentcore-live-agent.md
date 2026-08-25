@@ -2,9 +2,11 @@
 
 This is the current AgentCore score-booster path. It is separate from the
 historical MCP v2 compatibility spike and from the public API Gateway MCP
-endpoint. The runtime uses the same live-source normalization and deterministic
-policy as the public path, then invokes one bounded Strands agent only to
-retrieve facts and explain the immutable `RecommendationRecord`.
+endpoint. The deployed runtime uses the same live-source normalization and
+deterministic policy as the public path, then invokes one bounded Strands agent
+only to retrieve facts and explain the immutable `RecommendationRecord`.
+The public MCP endpoint remains API Gateway and Lambda; Lambda invokes this
+runtime, so the runtime is not an anonymous judge endpoint.
 
 The direct-code ZIP implements AgentCore's HTTP contract: `GET /ping` and `POST
 /invocations` on port 8080. Its invocation body accepts only this structured
@@ -26,13 +28,14 @@ Open-Meteo, and explicit NC DEQ coverage evidence are normalized before
 `policy.decide`; a model failure or invariant violation returns the template
 brief with the same record.
 
-## Approval gate
+## Current deployment and future approval gate
 
-No deployment is authorized by this document. Before any AWS action, confirm
-the `personal` account `831597648506`, region `us-east-1`, caller identity,
-Nova Lite inference profile `us.amazon.nova-lite-v1:0`, a budget ceiling,
-retention, rollback, and smoke-test owner. This runtime has public egress only
-to retrieve public marine sources; it has no public anonymous judge endpoint.
+The current runtime was deployed after explicit approval using the personal
+AWS account and `us-east-1`; the live smoke returned a structured record and
+brief with `brief_source: agent`. It has public egress only to retrieve public
+marine sources and has no public anonymous judge endpoint. Before any future
+AWS change, reconfirm the caller identity, Nova Lite inference profile,
+budget, retention, rollback, and smoke-test owner.
 
 ## Build and deploy after approval
 

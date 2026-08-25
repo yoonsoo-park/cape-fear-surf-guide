@@ -30,7 +30,7 @@ def test_judge_gated_live_template_has_api_key_rest_api_waf_ttl_and_no_function_
     assert "GlobalMcpPostRateLimit" in template
     assert "Default: 60" in template
     assert "ThrottlingRateLimit: !Ref ApiRateLimit" in template
-    assert "Default: 0.2" in template
+    assert "Default: 1" in template
     assert "Default: 120" in template
     assert "MCP_MAX_PUBLIC_POST_REQUESTS" in template
     assert "AWS::Lambda::EventSourceMapping" in template

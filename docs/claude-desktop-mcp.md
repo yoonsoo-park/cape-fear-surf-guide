@@ -3,6 +3,11 @@
 Verified documentation date: **2026-08-24**. The live demo is an API-key-gated,
 rate-limited MCP endpoint; it is not a safety guarantee.
 
+Current verification status: Codex CLI completed a live `find_surf_windows`
+call on 2026-08-24. ChatGPT Desktop and Claude Desktop still require the
+manual discovery-and-replay evidence described below; do not mark either as
+verified until both `find_surf_windows` and `explain_surf_window` succeed.
+
 ## Claude Desktop route
 
 After the approved API Gateway endpoint is deployed, add its exact HTTPS

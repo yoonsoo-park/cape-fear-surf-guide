@@ -12,7 +12,14 @@ Cape Fear Surf Guide creates evidence-backed surf-planning windows for Wrightsvi
 
 A single Strands agent interprets the request, calls fact-only retrieval tools, and emits a `SurfBrief` structured output. Deterministic Python normalizes evidence, converts time, derives windows, and produces an immutable `RecommendationRecord` through `policy.decide`. An active NWS or NC DEQ advisory becomes a deterministic veto before the model explains anything.
 
-The repository also includes a stateless MCP Python SDK v2 (`2026-07-28`) boundary. The documented AgentCore compatibility spike passed without changing the policy engine; no AgentCore resource is created by the demo or Phase 3 evaluation.
+The repository also includes a stateless MCP Python SDK v2 (`2026-07-28`) boundary
+with a compatibility path for standard hosts such as Codex. The public judge
+endpoint is API-key-gated API Gateway and Lambda; Lambda invokes a dedicated
+Amazon Bedrock AgentCore Runtime that runs the same live-source normalization,
+deterministic policy, and bounded Strands agent. AgentCore is an AWS-native
+execution and observability path, not an anonymous public endpoint. The public
+MCP boundary remains independently bounded by API keys, WAF, request budgets,
+and a circuit breaker.
 
 ## What we learned
 
@@ -24,7 +31,12 @@ Official advisories override the model. Missing, seasonal, or unavailable NC DEQ
 
 ## Evidence and reproducibility
 
-Use the README commands for the four frozen fixtures. The Phase 3 JSON report records the allowed personal account boundary, provider-reported tokens, estimated Nova Lite cost, tool calls, immutable-field checks, and latency gates. Token estimates are not presented as billing invoices.
+Use the README commands for the four frozen fixtures. The Phase 3 JSON report
+records the allowed personal account boundary, provider-reported tokens,
+estimated Nova Lite cost, tool calls, immutable-field checks, and latency gates.
+The live MCP smoke records `retrieval.mode: live`, a structured decision, and a
+separate `window_id` replay through `explain_surf_window`. Token estimates are
+not presented as billing invoices.
 
 ## Prior work disclosure
 

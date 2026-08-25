@@ -9,6 +9,9 @@ in `America/New_York`. It accepts the stateless v2 JSON-RPC envelope on
 initialization handshake used by standard MCP hosts such as Codex
 (`2025-06-18`). Both surfaces expose only `find_surf_windows` and
 `explain_surf_window`; the deterministic policy and request controls are shared.
+The public request path is API Gateway and Lambda. Lambda invokes the dedicated
+AgentCore Runtime for live planning; AgentCore is not exposed as an anonymous
+judge endpoint.
 
 Each `find_surf_windows` call retrieves NWS `NCZ108` alerts and forecast,
 NOAA station `8658163` tide predictions, and Open-Meteo marine and weather
