@@ -57,9 +57,12 @@ validation and before any tool, source lookup, or decision record write. The
 A private Circuit Breaker sets public Lambda reserved concurrency to zero when
 the 120th permit is observed, when Lambda starts reach 40 in five minutes, or
 when the required `PublicUntilUtc` arrives. `PublicUntilUtc` is UTC and must
-be no more than 72 hours after the approved deployment time. Only a
-human-approved manual invocation can re-enable a `volume_alarm` stop;
-request-budget and scheduled-expiry stops are terminal for that exposure.
+be no more than 72 hours after the approved deployment time. The stop is
+idempotent: it always re-confirms concurrency zero, including after a partial
+timeout, and records the terminal `disabled` state only after that control-plane
+call succeeds. Only a human-approved manual invocation can re-enable a
+`volume_alarm` stop; request-budget and scheduled-expiry stops are terminal for
+that exposure.
 Every new public window must use a new required `ExposureId`; it never reuses
 an expired or exhausted control record.
 
@@ -67,6 +70,8 @@ The stack sends a monthly AWS Budget email at $10. This alert provides
 visibility; the request-budget and circuit-breaker controls provide shutdown.
 Lambda has reserved concurrency 2, a 30-second timeout, a bounded request
 body, no VPC, and narrowly scoped record-table and exposure-control-table IAM.
+The private Circuit Breaker has its own 20-second timeout, bounded AWS SDK
+timeouts, and a one-record Stream batch with three retry attempts.
 
 The API and application do not log request bodies, party profiles, or API-key
 values. API Gateway method execution logging is disabled. There is no Lambda
