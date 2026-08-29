@@ -23,6 +23,12 @@ packages = ["surf"]
 dev = [
   "pytest>=8.3.0",
 ]
+analytics = [
+  "duckdb>=1.4.0",
+]
+
+[tool.uv]
+default-groups = ["dev", "analytics"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
