@@ -78,6 +78,15 @@ Parameters:
     Default: demo
     AllowedPattern: '^[A-Za-z0-9_-]{1,32}$'
 
+  CircuitBreakerTargetFunctionName:
+    Type: String
+    Default: ''
+    AllowedPattern: '^$|^[a-zA-Z][a-zA-Z0-9-_]{0,63}$'
+    Description: Optional private smoke target; production defaults to the DemoFunction in this stack.
+
+Conditions:
+  HasCircuitBreakerTargetFunctionName: !Not [!Equals [!Ref CircuitBreakerTargetFunctionName, '']]
+
 Resources:
   DemoLogGroup:
     Type: AWS::Logs::LogGroup
@@ -219,7 +228,11 @@ Resources:
                 Resource: !GetAtt ExposureControl.Arn
               - Effect: Allow
                 Action: lambda:PutFunctionConcurrency
-                Resource: !GetAtt DemoFunction.Arn
+                Resource:
+                  - !If
+                    - HasCircuitBreakerTargetFunctionName
+                    - !Sub 'arn:${AWS::Partition}:lambda:${AWS::Region}:${AWS::AccountId}:function:${CircuitBreakerTargetFunctionName}'
+                    - !GetAtt DemoFunction.Arn
               - Effect: Allow
                 Action: [dynamodb:DescribeStream, dynamodb:GetRecords, dynamodb:GetShardIterator, dynamodb:ListStreams]
                 Resource: !GetAtt ExposureControl.StreamArn
@@ -247,14 +260,14 @@ Resources:
       ReservedConcurrentExecutions: 1
       Role: !GetAtt CircuitBreakerRole.Arn
       Runtime: python3.11
-      Timeout: 10
+      Timeout: 20
       Environment:
         Variables:
           MCP_EXPOSURE_CONTROL_TABLE: !Ref ExposureControl
           MCP_EXPOSURE_ID: !Ref ExposureId
           MCP_MAX_PUBLIC_POST_REQUESTS: !Ref MaxPublicPostRequests
           MCP_PUBLIC_UNTIL_UTC: !Ref PublicUntilUtc
-          MCP_PUBLIC_FUNCTION_NAME: !Ref DemoFunction
+          MCP_PUBLIC_FUNCTION_NAME: !If [HasCircuitBreakerTargetFunctionName, !Ref CircuitBreakerTargetFunctionName, !Ref DemoFunction]
           MCP_NORMAL_RESERVED_CONCURRENCY: !Ref ReservedConcurrentExecutions
 
   ExposureControlStreamMapping:
@@ -263,8 +276,8 @@ Resources:
       EventSourceArn: !GetAtt ExposureControl.StreamArn
       FunctionName: !Ref CircuitBreakerFunction
       StartingPosition: LATEST
-      BatchSize: 10
-      MaximumRetryAttempts: 2
+      BatchSize: 1
+      MaximumRetryAttempts: 3
 
   McpRestApi:
     Type: AWS::ApiGateway::RestApi

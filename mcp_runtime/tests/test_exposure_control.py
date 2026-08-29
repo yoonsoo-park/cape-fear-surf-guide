@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+import types
 from datetime import datetime, timezone
 
 import pytest
@@ -44,8 +46,17 @@ class _Dynamo:
 
 
 class _Lambda:
-    def __init__(self): self.calls: list[dict] = []
-    def put_function_concurrency(self, **kwargs): self.calls.append(kwargs)
+    def __init__(self, *, error: Exception | None = None, events: list[str] | None = None):
+        self.calls: list[dict] = []
+        self.error = error
+        self.events = events
+
+    def put_function_concurrency(self, **kwargs):
+        if self.events is not None:
+            self.events.append("lambda")
+        self.calls.append(kwargs)
+        if self.error is not None:
+            raise self.error
 
 
 def _circuit_environment(monkeypatch: pytest.MonkeyPatch):
@@ -74,3 +85,115 @@ def test_circuit_breaker_disables_for_budget_stream_and_only_reenables_volume_al
     reenable_lambda = _Lambda()
     assert circuit_breaker.handler({"action": "reenable"}, object(), dynamodb_client=volume, lambda_client=reenable_lambda, now=lambda: 100) == {"status": "reenabled"}
     assert reenable_lambda.calls == [{"FunctionName": "public-mcp", "ReservedConcurrentExecutions": 2}]
+
+
+def test_disable_stops_function_before_recording_terminal_state(monkeypatch: pytest.MonkeyPatch):
+    _circuit_environment(monkeypatch)
+    events: list[str] = []
+
+    class OrderedDynamo(_Dynamo):
+        def update_item(self, **kwargs):
+            events.append("dynamodb")
+            super().update_item(**kwargs)
+
+    dynamodb = OrderedDynamo()
+    lambda_client = _Lambda(events=events)
+    result = circuit_breaker.handler(
+        {"action": "disable", "reason": "scheduled_expiry"},
+        object(),
+        dynamodb_client=dynamodb,
+        lambda_client=lambda_client,
+        now=lambda: 100,
+    )
+    assert result == {"status": "disabled", "reason": "scheduled_expiry"}
+    assert events == ["lambda", "dynamodb"]
+
+
+def test_already_disabled_retries_the_stop_call_after_a_partial_failure(monkeypatch: pytest.MonkeyPatch):
+    _circuit_environment(monkeypatch)
+    dynamodb = _Dynamo({"state": {"S": "disabled"}, "disabled_reason": {"S": "request_budget_exhausted"}})
+    lambda_client = _Lambda()
+
+    result = circuit_breaker.handler(
+        {"action": "disable", "reason": "request_budget_exhausted"},
+        object(),
+        dynamodb_client=dynamodb,
+        lambda_client=lambda_client,
+        now=lambda: 100,
+    )
+
+    assert result == {"status": "already_disabled", "reason": "request_budget_exhausted"}
+    assert lambda_client.calls == [{"FunctionName": "public-mcp", "ReservedConcurrentExecutions": 0}]
+    assert dynamodb.updates == []
+
+
+def test_failed_stop_does_not_record_disabled_state(monkeypatch: pytest.MonkeyPatch):
+    _circuit_environment(monkeypatch)
+    dynamodb = _Dynamo()
+    lambda_client = _Lambda(error=RuntimeError("control plane unavailable"))
+
+    with pytest.raises(RuntimeError, match="control plane unavailable"):
+        circuit_breaker.handler(
+            {"action": "disable", "reason": "request_budget_exhausted"},
+            object(),
+            dynamodb_client=dynamodb,
+            lambda_client=lambda_client,
+            now=lambda: 100,
+        )
+
+    assert dynamodb.updates == []
+
+
+def test_reenable_restores_function_before_publishing_enabled_state(monkeypatch: pytest.MonkeyPatch):
+    _circuit_environment(monkeypatch)
+    events: list[str] = []
+
+    class OrderedDynamo(_Dynamo):
+        def update_item(self, **kwargs):
+            events.append("dynamodb")
+            super().update_item(**kwargs)
+
+    dynamodb = OrderedDynamo({
+        "state": {"S": "disabled"},
+        "disabled_reason": {"S": "volume_alarm"},
+        "request_count": {"N": "40"},
+        "public_until": {"N": "9999999999"},
+    })
+    lambda_client = _Lambda(events=events)
+
+    result = circuit_breaker.handler(
+        {"action": "reenable"},
+        object(),
+        dynamodb_client=dynamodb,
+        lambda_client=lambda_client,
+        now=lambda: 100,
+    )
+
+    assert result == {"status": "reenabled"}
+    assert events == ["lambda", "dynamodb"]
+
+
+def test_default_clients_use_bounded_control_plane_timeouts(monkeypatch: pytest.MonkeyPatch):
+    calls: list[tuple[str, object]] = []
+
+    class FakeBoto3:
+        def client(self, service: str, *, config: object):
+            calls.append((service, config))
+            return service
+
+    class FakeConfig:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+    fake_botocore_config = types.ModuleType("botocore.config")
+    fake_botocore_config.Config = FakeConfig
+    monkeypatch.setitem(sys.modules, "boto3", FakeBoto3())
+    monkeypatch.setitem(sys.modules, "botocore.config", fake_botocore_config)
+
+    assert circuit_breaker._default_clients() == ("dynamodb", "lambda")
+    assert [service for service, _ in calls] == ["dynamodb", "lambda"]
+    assert calls[0][1].kwargs == {
+        "connect_timeout": 2,
+        "read_timeout": 5,
+        "retries": {"mode": "standard", "max_attempts": 2},
+    }

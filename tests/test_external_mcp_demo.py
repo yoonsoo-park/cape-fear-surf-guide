@@ -44,6 +44,10 @@ def test_judge_gated_live_template_has_api_key_rest_api_waf_ttl_and_no_function_
     assert "bedrock-agentcore:InvokeAgentRuntime" in template
     assert "MCP_AGENTCORE_RUNTIME_ARN" in template
     assert "Timeout: 30" in template
+    assert "Timeout: 20" in template
+    assert "CircuitBreakerTargetFunctionName" in template
+    assert "BatchSize: 1" in template
+    assert "MaximumRetryAttempts: 3" in template
     assert "ReservedConcurrentExecutions=0" not in template
     assert "AWSManagedRulesCommonRuleSet" in template
     assert "ReservedConcurrentExecutions" in template
