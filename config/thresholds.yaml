@@ -11,4 +11,5 @@ web_context:
   max_results: 3
   timeout_s: 8
   max_queries_per_request: 1
+  max_query_chars: 200
   max_age_days: 30

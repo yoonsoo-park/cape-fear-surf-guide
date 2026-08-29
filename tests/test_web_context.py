@@ -83,6 +83,16 @@ def test_web_context_query_cap_and_provider_failure_are_fail_closed():
     assert all(result["policy_signal"] is False for result in (first, second))
 
 
+def test_web_context_enforces_managed_connector_query_length():
+    outcome = collect_web_context(
+        "x" * 201,
+        adapter=FakeWebAdapter([]),
+        settings=WebContextSettings(enabled=True),
+    )
+
+    assert outcome["status"] == "query_too_long"
+
+
 def test_web_context_cannot_change_deterministic_policy_decision():
     snapshot_id, profile, window, evidence = load_fixture("hazard")
     record = decide(snapshot_id, profile, window, evidence)

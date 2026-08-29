@@ -26,6 +26,9 @@ dev = [
 analytics = [
   "duckdb>=1.4.0",
 ]
+websearch-live = [
+  "mcp-proxy-for-aws>=1.6.4",
+]
 
 [tool.uv]
 default-groups = ["dev", "analytics"]

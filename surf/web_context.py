@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+import json
 import os
 from typing import Any, Mapping, Protocol, Sequence
 from urllib.parse import urlparse
@@ -24,6 +25,67 @@ class WebSearchAdapter(Protocol):
 
 
 @dataclass(frozen=True)
+class AgentCoreWebSearchAdapter:
+    """IAM-authenticated adapter for the private AgentCore Gateway target."""
+
+    endpoint: str
+    region: str = "us-east-1"
+    profile: str | None = None
+    tool_name: str = "WebSearchTool"
+
+    def search(self, query: str, *, max_results: int, timeout_s: float) -> Any:
+        # Keep the optional live client out of the runtime and offline test
+        # dependency path. The live stage installs the `websearch-live` group.
+        from strands.tools.mcp import MCPClient
+        from mcp_proxy_for_aws.client import aws_iam_streamablehttp_client
+
+        def transport():
+            return aws_iam_streamablehttp_client(
+                endpoint=self.endpoint,
+                aws_service="bedrock-agentcore",
+                aws_region=self.region,
+                aws_profile=self.profile,
+                timeout=timeout_s,
+                sse_read_timeout=timeout_s,
+            )
+
+        with MCPClient(transport, startup_timeout=max(1, int(timeout_s))) as client:
+            tools = client.list_tools_sync()
+            discovered = {item.tool_name for item in tools}
+            if self.tool_name not in discovered:
+                raise RuntimeError(f"AgentCore Gateway did not expose {self.tool_name}")
+            response = client.call_tool_sync(
+                tool_use_id="cape-fear-web-context",
+                name=self.tool_name,
+                arguments={"query": query},
+                read_timeout_seconds=timedelta(seconds=timeout_s),
+            )
+        return _parse_mcp_result(response)
+
+
+def _parse_mcp_result(response: Any) -> dict[str, Any]:
+    """Extract the connector's JSON text while preserving only result facts."""
+
+    if not isinstance(response, Mapping):
+        return {"results": []}
+    if response.get("status") == "error" or response.get("isError"):
+        raise RuntimeError("AgentCore Web Search tool returned an error")
+    structured = response.get("structuredContent")
+    if isinstance(structured, Mapping) and isinstance(structured.get("results"), list):
+        return {"results": list(structured["results"])}
+    for content in response.get("content", []):
+        if not isinstance(content, Mapping) or not isinstance(content.get("text"), str):
+            continue
+        try:
+            parsed = json.loads(content["text"])
+        except (TypeError, ValueError):
+            continue
+        if isinstance(parsed, Mapping) and isinstance(parsed.get("results"), list):
+            return {"results": list(parsed["results"])}
+    return {"results": []}
+
+
+@dataclass(frozen=True)
 class WebContextSettings:
     """Safety and cost bounds for the optional explanation context."""
 
@@ -31,6 +93,7 @@ class WebContextSettings:
     max_results: int = 3
     timeout_s: float = 8.0
     max_queries_per_request: int = 1
+    max_query_chars: int = 200
     max_age_days: int = 30
 
     def __post_init__(self) -> None:
@@ -40,6 +103,8 @@ class WebContextSettings:
             raise ValueError("web_context.timeout_s must be between 0 and 30 seconds")
         if self.max_queries_per_request < 1 or self.max_queries_per_request > 3:
             raise ValueError("web_context.max_queries_per_request must be between 1 and 3")
+        if self.max_query_chars < 1 or self.max_query_chars > 200:
+            raise ValueError("web_context.max_query_chars must be between 1 and 200")
         if self.max_age_days < 1 or self.max_age_days > 3650:
             raise ValueError("web_context.max_age_days must be between 1 and 3650 days")
 
@@ -55,6 +120,7 @@ class WebContextSettings:
             max_results=int(os.getenv("SURF_WEB_CONTEXT_MAX_RESULTS", "3")),
             timeout_s=float(os.getenv("SURF_WEB_CONTEXT_TIMEOUT_S", "8")),
             max_queries_per_request=int(os.getenv("SURF_WEB_CONTEXT_MAX_QUERIES", "1")),
+            max_query_chars=int(os.getenv("SURF_WEB_CONTEXT_MAX_QUERY_CHARS", "200")),
             max_age_days=int(os.getenv("SURF_WEB_CONTEXT_MAX_AGE_DAYS", "30")),
         )
 
@@ -154,6 +220,8 @@ def collect_web_context(
         return {**base, "status": "disabled"}
     if not clean_query:
         return {**base, "status": "invalid_query"}
+    if len(clean_query) > settings.max_query_chars:
+        return {**base, "status": "query_too_long"}
     if query_count >= settings.max_queries_per_request:
         return {**base, "status": "query_cap_reached"}
     if adapter is None:

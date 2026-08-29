@@ -7,6 +7,7 @@ from scripts.setup_web_search_target import (
     _target_configuration,
     _validate_args,
 )
+from surf.web_context import _parse_mcp_result
 
 
 def _args(**overrides):
@@ -42,3 +43,9 @@ def test_setup_rejects_non_personal_or_wrong_region_and_requires_live_confirmati
         _validate_args(_args(action="apply"))
     with pytest.raises(SystemExit, match="nCino/company"):
         _validate_args(_args(profile="company"))
+
+
+def test_mcp_web_search_parser_accepts_text_or_structured_results_only():
+    assert _parse_mcp_result({"structuredContent": {"results": [{"url": "https://example.com"}]}})["results"]
+    assert _parse_mcp_result({"content": [{"type": "text", "text": '{"id":"x","results":[{"url":"https://example.com"}]}'}]})["results"]
+    assert _parse_mcp_result({"content": [{"type": "text", "text": "not json"}]}) == {"results": []}
