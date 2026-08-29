@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 
 LOGGER = logging.getLogger(__name__)
+LOGGER.setLevel(logging.INFO)
 
 
 def handler(event: dict[str, Any], context: Any, *, dynamodb_client: Any | None = None,
