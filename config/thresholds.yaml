@@ -2,3 +2,13 @@ schema_version: 1
 planning_filters: {}
 # No beginner, child, family, or accessibility threshold is enabled until an
 # authoritative source and human review are recorded here.
+
+# Optional, explanation-only AgentCore Web Search context. It is deliberately
+# disabled for public MCP and policy evaluation unless explicitly enabled in a
+# private runtime configuration.
+web_context:
+  enabled: false
+  max_results: 3
+  timeout_s: 8
+  max_queries_per_request: 1
+  max_age_days: 30
