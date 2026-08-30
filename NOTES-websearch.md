@@ -58,6 +58,13 @@ The 43-character query returned three results. All three were labeled
 `dist/agentcore-web-search-evidence.json` (kept out of the commit if the
 repository ignores generated `dist` evidence).
 
+The command-level wall time for the successful smoke was 5.3 seconds,
+including IAM MCP startup and `tools/list`; query-only latency was not isolated
+by that first runner. At the documented $7/1,000-query rate, one successful
+query has a rate-based estimate of $0.007 (not an invoice). Because this was a
+direct MCP tool smoke rather than a model explanation call, token impact on a
+`SurfBrief` was not measured and is not claimed.
+
 The first teardown attempt surfaced the actual asynchronous-delete error:
 `ValidationException: Gateway with ID: capefearwebsearchgateway-45po1miaah has
 targets associated with it. Delete all targets before deleting the gateway.`

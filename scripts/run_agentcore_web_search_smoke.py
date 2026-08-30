@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -37,7 +38,9 @@ def main() -> None:
     _session(args)  # STS identity check; credentials are never printed or persisted.
     settings = WebContextSettings(enabled=True, max_results=args.max_results, timeout_s=args.timeout_s)
     adapter = AgentCoreWebSearchAdapter(endpoint=args.endpoint, region=args.region, profile=args.profile)
+    started = time.perf_counter()
     outcome = collect_web_context(args.query, adapter=adapter, settings=settings)
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 3)
     if outcome["status"] not in {"ok", "empty"}:
         raise SystemExit(f"Web Search smoke failed closed with status={outcome['status']}")
 
@@ -49,6 +52,8 @@ def main() -> None:
         "endpoint_host": endpoint_host,
         "tool": "WebSearchTool",
         "query_length": len(args.query),
+        "elapsed_ms": elapsed_ms,
+        "estimated_query_cost_usd": 0.007,
         "status": outcome["status"],
         "result_count": len(outcome["results"]),
         "results": [

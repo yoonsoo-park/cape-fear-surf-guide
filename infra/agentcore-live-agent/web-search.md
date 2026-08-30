@@ -42,8 +42,8 @@ PYTHONPATH=. uv run python scripts/setup_web_search_target.py \
 ```
 
 Capture only the sanitized JSON summary, run the private MCP `tools/list` and
-one bounded `WebSearchTool` smoke, then tear down the target, Gateway, and
-role:
+one bounded `WebSearchTool` smoke (the runner records elapsed time and the
+rate-based query-cost estimate), then tear down the target, Gateway, and role:
 
 ```bash
 PYTHONPATH=. uv run python scripts/setup_web_search_target.py \
