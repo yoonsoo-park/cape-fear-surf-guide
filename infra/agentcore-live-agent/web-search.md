@@ -17,7 +17,10 @@ does not change the public endpoint.
   gateway ARN and `bedrock-agentcore:InvokeWebSearch` on
   `arn:aws:bedrock-agentcore:us-east-1:aws:tool/web-search.v1`.
 
-The Gateway exposes the managed connector as an MCP `WebSearchTool`. Its
+The Gateway exposes the managed connector semantically as `WebSearchTool`. With
+the target name above, the current MCP wire name is
+`web-search-tool___WebSearch` (Gateway target namespacing); the adapter accepts
+that suffix. Its
 results are normalized as `source_kind=web_context` and are never passed to
 `policy.decide` or mapped to an advisory/veto.
 

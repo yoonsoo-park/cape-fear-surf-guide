@@ -7,7 +7,7 @@ from scripts.setup_web_search_target import (
     _target_configuration,
     _validate_args,
 )
-from surf.web_context import _parse_mcp_result
+from surf.web_context import _parse_mcp_result, _resolve_web_tool_name
 
 
 def _args(**overrides):
@@ -49,3 +49,8 @@ def test_mcp_web_search_parser_accepts_text_or_structured_results_only():
     assert _parse_mcp_result({"structuredContent": {"results": [{"url": "https://example.com"}]}})["results"]
     assert _parse_mcp_result({"content": [{"type": "text", "text": '{"id":"x","results":[{"url":"https://example.com"}]}'}]})["results"]
     assert _parse_mcp_result({"content": [{"type": "text", "text": "not json"}]}) == {"results": []}
+
+
+def test_gateway_target_namespace_resolves_semantic_web_search_tool():
+    assert _resolve_web_tool_name({"web-search-tool___WebSearch"}, "WebSearchTool") == "web-search-tool___WebSearch"
+    assert _resolve_web_tool_name({"WebSearchTool"}, "WebSearchTool") == "WebSearchTool"

@@ -52,15 +52,24 @@ class AgentCoreWebSearchAdapter:
         with MCPClient(transport, startup_timeout=max(1, int(timeout_s))) as client:
             tools = client.list_tools_sync()
             discovered = {item.tool_name for item in tools}
-            if self.tool_name not in discovered:
+            selected_name = _resolve_web_tool_name(discovered, self.tool_name)
+            if not selected_name:
                 raise RuntimeError(f"AgentCore Gateway did not expose {self.tool_name}")
             response = client.call_tool_sync(
                 tool_use_id="cape-fear-web-context",
-                name=self.tool_name,
+                name=selected_name,
                 arguments={"query": query},
                 read_timeout_seconds=timedelta(seconds=timeout_s),
             )
         return _parse_mcp_result(response)
+
+
+def _resolve_web_tool_name(discovered: set[str], preferred: str) -> str:
+    if preferred in discovered:
+        return preferred
+    # Gateway namespaces connector tools with the target name. For
+    # `web-search-tool`, the current wire name is `web-search-tool___WebSearch`.
+    return next((name for name in discovered if name.endswith("___WebSearch")), "")
 
 
 def _parse_mcp_result(response: Any) -> dict[str, Any]:

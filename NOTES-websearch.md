@@ -7,8 +7,9 @@ explanation agent when `WebContextSettings.enabled` is true. The retrieval
 agent still has exactly the original six fact tools. Normalized results carry
 `source_kind=web_context`, title, URL, text, `published_at`, and a recency label
 derived from `publishedDate`; they are attached to `SurfBrief.context` only.
-The live Gateway create/call/delete stage is intentionally pending its explicit
-AWS approval and has not run in this checkout.
+The live Gateway create/call/delete stage was held behind an explicit AWS
+approval gate and is now complete; the resources were torn down after the
+single smoke query.
 
 ## Offline evidence
 
@@ -40,7 +41,31 @@ AWS approval and has not run in this checkout.
    guard message `refusing non-approved or nCino account; --account must be the
    approved personal account`. Running `--action apply` without the explicit
    flag produced `apply requires --confirm-live after human AWS approval`.
+5. The first private `tools/list` returned the namespaced wire tool
+   `web-search-tool___WebSearch`, not the unqualified `WebSearchTool` assumed
+   by the initial adapter. The adapter now resolves that target-name suffix;
+   this was a real Gateway integration mismatch, not a policy change.
 
-No live query count, AWS cost, Gateway ARN, or Web Search result is claimed
-until the approved private smoke is executed and torn down. No public MCP
-endpoint or API-key behavior changes in this stage.
+## Approved private smoke evidence
+
+The live gate was then approved for one query in account `831597648506`,
+profile `aws-dimly`, region `us-east-1`. Gateway
+`capefearwebsearchgateway-45po1miaah` and target `GLIUUFMJ44` reached `READY`.
+The 43-character query returned three results. All three were labeled
+`source_kind=web_context`; all had `policy_signal=false`, and all lacked a
+`publishedDate`, so the normalizer correctly reported
+`freshness_state=unavailable`. The sanitized evidence is in
+`dist/agentcore-web-search-evidence.json` (kept out of the commit if the
+repository ignores generated `dist` evidence).
+
+The first teardown attempt surfaced the actual asynchronous-delete error:
+`ValidationException: Gateway with ID: capefearwebsearchgateway-45po1miaah has
+targets associated with it. Delete all targets before deleting the gateway.`
+After the target disappeared (`ResourceNotFoundException` on a read-only
+follow-up), the retry deleted the Gateway and role. A final describe returned
+`gateway: null`, and `iam get-role` returned `NoSuchEntity`; no Web Search
+resource remains.
+
+AWS cost was not measured as an invoice; the one-query count, Gateway ARN, and
+sanitized result metadata above are the recorded smoke evidence. No public MCP
+endpoint or API-key behavior changed.
