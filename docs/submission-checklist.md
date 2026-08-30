@@ -9,6 +9,8 @@
 - [x] AgentCore MCP v2 live-spike evidence: [`docs/agentcore-mcp-v2-spike.md`](agentcore-mcp-v2-spike.md).
 - [x] Public live MCP contract and source capture: [`docs/external-mcp-demo.md`](external-mcp-demo.md) and [`docs/live-source-contract.md`](live-source-contract.md).
 - [x] Prior-work disclosure: README and [`docs/devpost-draft.md`](devpost-draft.md).
+- [x] DuckDB evidence analytics and parity contract: [`NOTES-duckdb.md`](../NOTES-duckdb.md) and [`duckdb-evidence-analytics.md`](duckdb-evidence-analytics.md).
+- [x] AgentCore Web Search explanation-only smoke and teardown evidence: [`NOTES-websearch.md`](../NOTES-websearch.md) and [`infra/agentcore-live-agent/web-search.md`](../infra/agentcore-live-agent/web-search.md).
 
 ## Validation evidence
 

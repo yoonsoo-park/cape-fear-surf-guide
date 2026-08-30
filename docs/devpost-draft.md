@@ -21,6 +21,12 @@ execution and observability path, not an anonymous public endpoint. The public
 MCP boundary remains independently bounded by API keys, WAF, request budgets,
 and a circuit breaker.
 
+For evidence rather than decoration, the repository includes an offline DuckDB
+report that reproduces the compatibility summary and adds node-token,
+scenario-failure, and schema-presence analytics. An explanation-only AgentCore
+Web Search adapter is separately guarded, with a private live smoke and teardown
+recorded in [`NOTES-websearch.md`](../NOTES-websearch.md).
+
 ## What we learned
 
 The prior five-agent research baseline completed only 27 of 33 intended runs. Its handoff payload growth caused four of six failures. This project uses that measured result as the reason to put the safety decision in deterministic Python rather than in a prompt.
@@ -28,6 +34,9 @@ The prior five-agent research baseline completed only 27 of 33 intended runs. It
 ## Safety and limits
 
 Official advisories override the model. Missing, seasonal, or unavailable NC DEQ coverage is labeled, not treated as proof of safe water. The product does not book lessons, process payments, offer rescue advice, or replace posted flags, lifeguards, or local officials.
+
+Web Search context is supplemental explanation evidence, not an official
+advisory or safety signal. It cannot flip a deterministic decision.
 
 ## Evidence and reproducibility
 

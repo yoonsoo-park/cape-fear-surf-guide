@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -93,6 +93,17 @@ class RecommendationRecord(FrozenModel):
     evidence: tuple[EvidenceItem, ...]
 
 
+class WebContextItem(FrozenModel):
+    """Non-authoritative web fact attached only to an explanatory brief."""
+
+    source_kind: Literal["web_context"] = "web_context"
+    title: str
+    url: str
+    text: str
+    published_at: datetime | None = None
+    freshness_state: FreshnessState
+
+
 class SurfBrief(FrozenModel):
     window_id: str
     decision_state: DecisionState
@@ -101,3 +112,4 @@ class SurfBrief(FrozenModel):
     warnings: tuple[str, ...]
     source_urls: tuple[str, ...]
     recheck_guidance: str
+    context: tuple[WebContextItem, ...] = Field(default=(), max_length=3)
