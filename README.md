@@ -66,6 +66,7 @@ billing invoice.
 - [AgentCore live Strands-agent deployment path](docs/agentcore-live-agent.md)
 - [Public live HTTPS MCP runbook](docs/external-mcp-demo.md)
 - [Claude Desktop and ChatGPT verification](docs/claude-desktop-mcp.md)
+- [Claude Desktop company-laptop runbook](docs/claude-desktop-company-laptop-runbook.md)
 - [Live source contract capture](docs/live-source-contract.md)
 
 Publishing the repository, uploading a video, submitting to Devpost, and
