@@ -2,7 +2,7 @@
 
 이 문서는 녹화 진행자를 위한 한국어 안내서다. 화면에 입력하는 프롬프트와
 실제로 말하는 문장은 심사위원을 위해 영어로 작성했다. 영어 내레이션은
-짧고 쉬운 단어만 사용한다.
+기술적으로 정확하면서도 자연스러운 발표 문장으로 구성한다.
 
 이 서비스는 바다가 안전하다고 보장하지 않는다. 녹화 화면에 API 키,
 `x-api-key` 헤더, 환경변수, 개인 AWS 식별자, 회사 정보, 알림 또는
@@ -100,13 +100,16 @@ README의 safety boundary를 보여준다.
 
 ### 영어로 말하기
 
-> Surf plans need many data sources.
-> They can be old or disagree.
-> A clear AI answer can still be wrong.
+> Deciding whether to take people into the water on the Cape Fear coast means
+> reconciling marine conditions, weather alerts, tide predictions, and
+> water-quality evidence. These sources update at different times, sometimes
+> disagree, and none of them directly answers the question a person is asking.
 >
-> This tool is for surf schools, families, and local helpers.
-> One answer may affect a whole group.
-> An official warning must always win.
+> Cape Fear Surf Guide is for surf schools running beginner lessons, families
+> planning a morning, and local organizations that answer for other people.
+> The dangerous failure mode for a language model here is not being unhelpful.
+> It is being fluent while quietly talking past an active hazard advisory. So
+> the system is designed so that an official warning always wins.
 
 ## 2. 실행 구조 — 0:45-1:15
 
@@ -117,12 +120,12 @@ immutable record 순서로 가리킨다.
 
 ### 영어로 말하기
 
-> Claude calls the MCP tool.
-> AgentCore runs a bounded Strands workflow.
-> Python gets and checks the live data first.
-> Python makes the decision.
-> Strands explains that fixed decision.
-> The model cannot remove a warning.
+> Claude turns the user's request into a structured MCP tool call. API Gateway
+> and Lambda enforce the public access controls, then invoke a bounded Strands
+> workflow on AgentCore. Inside that runtime, deterministic Python retrieves
+> and normalizes the evidence and finalizes the policy decision first. Strands
+> can then explain that fixed record, but it cannot change the decision, remove
+> a warning, or invent a source.
 
 “Strands decides which sources are safe” 또는 “the same agent session continues”
 라고 말하지 않는다.
@@ -154,16 +157,16 @@ Claude가 허가를 요청하면 `find_surf_windows`만 승인한다.
 
 다음 필드를 순서대로 가리킨다.
 
-| 필드 | 확인값 | 짧게 말할 영어 문장 |
+| 필드 | 확인값 | 화면을 가리키며 말할 영어 문장 |
 | --- | --- | --- |
-| tool name | `find_surf_windows` | “This is a real MCP call.” |
-| `resultType` | `complete` | “The structured call is complete.” |
-| `retrieval.mode` | `live` | “This call used the live data path.” |
-| `retrieval.sources` | 각 항목에 URL, 시각, freshness | “Each source can be checked.” |
-| `brief_source` | `agent` 또는 정직하게 `template` | “Strands made this brief.” 또는 “The safe template was used.” |
-| `decision.state` | 유효한 결정 상태 | “Python made this decision.” |
-| `safety_limit` | 존재 | “This is only a planning aid.” |
-| `window_id` | 비어 있지 않은 ID | “This ID points to the saved record.” |
+| tool name | `find_surf_windows` | “This is the live MCP tool call, not a prose-only answer.” |
+| `resultType` | `complete` | “The request completed through the structured contract.” |
+| `retrieval.mode` | `live` | “The service used its live evidence path rather than substituting a fixture.” |
+| `retrieval.sources` | 각 항목에 URL, 시각, freshness | “Every input remains attributable and carries its own freshness state.” |
+| `brief_source` | `agent` 또는 정직하게 `template` | “The bounded Strands workflow produced this brief.” 또는 “The model output was rejected, so the safe template was used.” |
+| `decision.state` | 유효한 결정 상태 | “This state was finalized by deterministic Python, not by the model.” |
+| `safety_limit` | 존재 | “The response explicitly remains a planning aid, not a safety guarantee.” |
+| `window_id` | 비어 있지 않은 ID | “This ID points to the immutable record stored for independent replay.” |
 
 화면에 evidence가 5개라면 “four sources”라고 말하지 않는다.
 “current public data” 또는 실제로 보이는 개수만 말한다.
@@ -200,11 +203,11 @@ result.
 
 ### 영어로 말하기
 
-> This is a new Claude chat.
-> The window ID is not a chat session.
-> It points to the saved record.
-> No model memory is used.
-> No new source search is used.
+> This is a separate Claude conversation, so the replay does not depend on
+> chat history. The window ID is not an AgentCore session ID. It is a lookup
+> key for the immutable record stored by the first call. This second tool reads
+> that record directly, without model memory and without refreshing the
+> sources.
 
 저장 record는 24시간 후 만료된다. 없는 ID와 만료된 ID가 오류를 내는 것은
 정상적인 fail-closed 동작이다.
@@ -222,9 +225,10 @@ uv run python main.py --fixture hazard
 
 ### 영어로 말하기
 
-> This official warning is a hard veto.
-> Python applies it before the final brief.
-> The model cannot remove it.
+> Here an official advisory creates a deterministic veto. The agent is still
+> free to explain the result, but the recommendation remains no because Python
+> applies the veto before the final brief is accepted. The model has no path
+> that can remove it.
 
 ## 5. 데이터가 나쁠 때 — 3:30-4:10
 
@@ -239,10 +243,10 @@ uv run python main.py --fixture conflict
 
 ### 영어로 말하기
 
-> Old data and conflicting data are different problems.
-> The system names each problem.
-> If live data is missing, it stops.
-> It does not use a friendly fake result.
+> Stale evidence and conflicting evidence are different conditions, not one
+> generic error. The policy names each state explicitly. In the live path, if
+> a required source fails, the service returns insufficient data instead of
+> silently replacing it with a friendlier fixture.
 
 ## 6. 측정 결과 — 4:10-4:40
 
@@ -259,10 +263,10 @@ Phase 3 summary에서 아래 숫자만 보여준다.
 
 ### 영어로 말하기
 
-> These are measured tests.
-> The policy stayed fixed.
-> The model output passed every schema check.
-> Token counts are evidence, not an AWS bill.
+> These are measured acceptance gates, not architecture claims. Across the
+> evaluation matrix, the structured schema, tool-use, official-veto, and
+> immutable-record checks all passed. The token counts are provider counters
+> preserved as evidence; they are not presented as an AWS billing invoice.
 
 ## 7. 마무리 — 4:40-5:00
 
@@ -272,9 +276,10 @@ README safety warning과 source link로 돌아간다.
 
 ### 영어로 말하기
 
-> This tool suggests a time and shows its evidence.
-> It never says the water is safe.
-> Beach flags, lifeguards, and local officials always come first.
+> The person operating this tool is often not the person who gets in the water,
+> and one answer can travel to a whole group. Cape Fear Surf Guide proposes a
+> window and shows the evidence behind it. It never says the water is safe.
+> Posted flags, lifeguards, and local officials always take priority.
 
 ## Live 장면 합격 기록
 
