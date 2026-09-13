@@ -1,217 +1,284 @@
-# Five-minute demo script
+# 5분 데모 녹화 대본
 
-This is a recording plan, not a promise that an ocean is safe. Never display
-an API key, an `x-api-key` header, terminal environment, private AWS identifier,
-company information, or an unrelated application window.
+이 문서는 녹화 진행자를 위한 한국어 안내서다. 화면에 입력하는 프롬프트와
+실제로 말하는 문장은 심사위원을 위해 영어로 작성했다. 영어 내레이션은
+짧고 쉬운 단어만 사용한다.
 
-Devpost requires the pitch to state the problem, who the product is for, and
-why it matters. Sections 1 and 7 carry those points; do not cut them for time.
-Track: **Good Neighbor Agents**.
+이 서비스는 바다가 안전하다고 보장하지 않는다. 녹화 화면에 API 키,
+`x-api-key` 헤더, 환경변수, 개인 AWS 식별자, 회사 정보, 알림 또는
+관련 없는 앱을 노출하지 않는다.
 
-## Time budget
+참가 트랙: **Good Neighbor Agents**
 
-| Time | Seconds | Scene |
-| --- | ---: | --- |
-| 0:00-0:45 | 45 | Pitch: problem, audience, stakes |
-| 0:45-1:15 | 30 | Architecture: where the agent may act |
-| 1:15-2:45 | 90 | Live `find` and independent `explain` through Claude Desktop |
-| 2:45-3:30 | 45 | The veto the model cannot remove |
-| 3:30-4:10 | 40 | What happens when evidence is bad |
-| 4:10-4:40 | 30 | Measured gates, not claims |
-| 4:40-5:00 | 20 | Close on the boundary |
+## 전체 시간표
 
-The live product receives 90 seconds; the fixture evidence receives 85. Show
-the working product first, then prove why its safety boundary is credible.
+| 시간 | 장면 |
+| --- | --- |
+| 0:00-0:45 | 문제, 사용자, 중요한 이유 |
+| 0:45-1:15 | 실제 실행 구조 |
+| 1:15-2:45 | Claude Desktop에서 live `find`와 독립 `explain` |
+| 2:45-3:30 | 모델이 없앨 수 없는 veto |
+| 3:30-4:10 | 데이터가 나쁠 때의 동작 |
+| 4:10-4:40 | 측정 결과 |
+| 4:40-5:00 | 안전 경계로 마무리 |
 
-## Before recording: prepare the screens
+## 반드시 이해하고 말해야 할 실행 구조
 
-1. Confirm the approved judge exposure is enabled, unexpired, and has request
-   budget. The preparation exposure was `judge-20260913-a`, expiring at
-   `2026-09-16T12:25:20Z`; re-check rather than assuming this is current.
-2. Confirm Claude Desktop shows `cape_fear_surf_guide` with exactly
-   `find_surf_windows` and `explain_surf_window`.
-3. Select a `DEMO_DATE` from today through six days ahead in the
-   `America/New_York` calendar. The prompts below use `2026-09-14`; replace it
-   everywhere if recording on a different day.
-4. Perform exactly one dry run of `find` followed by `explain`. Record the
-   returned state and adjust the narration to match. Do not rerun to search for
-   a friendlier result.
-5. Prepare two clean Claude conversations: A for `find`, B for `explain`.
-6. Open the README boundary, `docs/assets/architecture.svg`, the committed
-   Phase 3 `summary.json`, and a clean terminal at the repository root.
-7. Hide usernames, company hostnames, private paths, notifications, unrelated
-   browser tabs, and unrelated MCP servers.
-8. Collapse raw request details if the client could show headers. Expand only
-   the sanitized result fields named below.
+녹화에서 “Strands가 모든 것을 결정한다”고 말하면 안 된다. 실제 순서는
+다음과 같다.
 
-If the dry run returns HTTP 403, 429, a missing tool, or a connection error,
-stop before recording. Do not remove authentication, weaken WAF, or retry in a
-loop. Follow the company-laptop runbook and contact the exposure owner.
+1. **Claude Desktop**이 사용자의 자연어를 읽고 공개 MCP 도구
+   `find_surf_windows`를 선택한다.
+2. API Gateway와 Lambda가 인증, WAF, 요청 예산을 적용한다.
+3. Lambda가 각 `find` 요청마다 새로운 AgentCore Runtime session을
+   호출한다.
+4. AgentCore 안의 **결정론적 Python**이 입력을 검증하고, 라이브 소스를
+   가져오고, 데이터를 정규화하고, `policy.decide`로 판정을 확정한다.
+5. 판정이 확정된 뒤 **Strands retrieval pass**가 fact-only tools를 통해
+   정규화된 증거를 읽는다. 이 도구들은 판정을 만들거나 바꾸지 않는다.
+6. **Strands explanation pass**가 확정된 record를 짧은 `SurfBrief`로
+   묶는다.
+7. 코드가 모델 출력의 `window_id`, 판정, URL, 경고를 다시 검사한다.
+   하나라도 바뀌면 모델 설명을 버리고 template brief를 사용한다.
+8. Lambda가 결과를 반환하고, `window_id`를 키로 DynamoDB에 24시간
+   저장한다.
 
-## 1. Pitch — 0:00 to 0:45
+현재 구현은 AgentCore 안에서 Strands `Agent` 객체를 retrieval과
+explanation에 각각 하나씩 사용한다. “one agent”라고 강조하지 말고
+**a bounded Strands workflow**라고 표현한다.
 
-### On screen
+### `window_id`가 의미하는 것
 
-Show the README safety boundary.
+`window_id`는 AgentCore session ID가 아니다.
 
-### Say
+- AgentCore의 `runtimeSessionId`는 각 `find` 호출마다 새로 생성되는
+  내부 실행 식별자이며 사용자에게 반환되지 않는다.
+- `window_id`는 확정된 `RecommendationRecord`를 DynamoDB에서 찾는
+  임의의 조회 키다.
+- `explain_surf_window`는 이 키로 저장된 결과를 그대로 반환한다.
+- Strands의 이전 대화를 이어가거나 모델 memory를 복구하지 않는다.
+- 따라서 이것은 **conversation continuation**이 아니라
+  **stateless record replay**다.
 
-> Deciding whether to take people into the water on the Cape Fear coast means
-> reconciling a marine forecast, an NWS zone forecast, active alerts, tide
-> predictions, and water-quality status. They go stale at different rates and
-> none of them answers the question a person is actually asking.
+## 녹화 전 준비
+
+1. judge exposure가 활성 상태이고, 만료되지 않았고, 요청 예산이 남아
+   있는지 확인한다. 준비 시 사용한 exposure는
+   `judge-20260913-a`, 만료 시각은 `2026-09-16T12:25:20Z`였다.
+   녹화 당일에는 이 값을 다시 확인한다.
+2. Claude Desktop에 `cape_fear_surf_guide`가 연결되어 있고 아래 도구
+   두 개만 보이는지 확인한다.
+   - `find_surf_windows`
+   - `explain_surf_window`
+3. 미국 동부 날짜 기준 오늘부터 6일 안의 `DEMO_DATE`를 정한다.
+   아래 프롬프트는 `2026-09-14`를 사용한다. 다른 날이면 두 군데의
+   날짜를 모두 바꾼다.
+4. 녹화 전에 `find` 1회와 `explain` 1회만 드라이런한다.
+   더 좋은 판정을 얻기 위해 반복 호출하지 않는다.
+5. Claude 대화 두 개를 미리 연다.
+   - 대화 A: `find_surf_windows`
+   - 대화 B: `explain_surf_window`
+6. 다음 화면을 미리 연다.
+   - README의 safety boundary
+   - `docs/assets/architecture.svg`
+   - Phase 3 `summary.json`
+   - 저장소 루트의 깨끗한 terminal
+7. 사용자명, 회사 hostname, 개인 경로, 알림, 다른 브라우저 탭과 다른 MCP
+   server를 숨긴다.
+8. raw request나 header가 보일 수 있는 패널은 접는다. 아래에서 지정한
+   결과 필드만 펼친다.
+
+드라이런에서 HTTP 403, 429, 연결 오류 또는 도구 누락이 나오면 녹화를
+시작하지 않는다. 인증이나 WAF를 약하게 만들지 말고 exposure owner에게
+확인을 요청한다.
+
+## 1. 문제와 사용자 — 0:00-0:45
+
+### 화면
+
+README의 safety boundary를 보여준다.
+
+### 영어로 말하기
+
+> Surf plans need many data sources.
+> They can be old or disagree.
+> A clear AI answer can still be wrong.
 >
-> This is for surf schools running beginner lessons, families planning a
-> morning, and local volunteers who answer for other people. The dangerous
-> language-model failure here is not being unhelpful. It is being fluent while
-> quietly talking past an active hazard advisory. So this agent is built to be
-> structurally unable to override one.
+> This tool is for surf schools, families, and local helpers.
+> One answer may affect a whole group.
+> An official warning must always win.
 
-## 2. Architecture — 0:45 to 1:15
+## 2. 실행 구조 — 0:45-1:15
 
-### On screen
+### 화면
 
-Show `docs/assets/architecture.svg`. Point to the agent/tool loop,
-deterministic policy, and immutable record.
+`docs/assets/architecture.svg`에서 MCP, AgentCore, Python policy,
+immutable record 순서로 가리킨다.
 
-### Say
+### 영어로 말하기
 
-> The Strands agent handles intake, chooses fact-only retrieval tools, and
-> emits a schema-validated SurfBrief. Deterministic Python normalizes evidence,
-> checks freshness and conflicts, and applies official-advisory vetoes. The
-> agent writes the explanation, never the decision. The live MCP request enters
-> through API Gateway and Lambda and executes the agent on Amazon Bedrock
-> AgentCore Runtime.
+> Claude calls the MCP tool.
+> AgentCore runs a bounded Strands workflow.
+> Python gets and checks the live data first.
+> Python makes the decision.
+> Strands explains that fixed decision.
+> The model cannot remove a warning.
 
-## 3. Live end-to-end — 1:15 to 2:45
+“Strands decides which sources are safe” 또는 “the same agent session continues”
+라고 말하지 않는다.
 
-### 3A. `find_surf_windows` — about 55 seconds
+## 3. Claude Desktop live demo — 1:15-2:45
 
-Use Claude conversation A. Paste this prompt, changing only the date if needed:
+### 3A. `find_surf_windows` — 약 55초
+
+Claude 대화 A에 아래 **영어 프롬프트**를 붙여 넣는다. 필요하면 날짜만
+바꾼다.
 
 ```text
-Cape Fear Surf Guide MCP만 사용해 2026-09-14 오전 Wrightsville Beach의
-초보자용 서핑 가능 창을 찾아줘.
+Use only the Cape Fear Surf Guide MCP to find a beginner-friendly morning
+surf window at Wrightsville Beach on 2026-09-14.
 
-반드시 find_surf_windows를 실제 호출하고 아래 입력을 사용해:
+You must call find_surf_windows with exactly these inputs:
 - date: 2026-09-14
 - preferred_area: Wrightsville Beach
 - time_range: morning
 - party_profile: {"skill_level":"beginner","ages":[],"accessibility_needs":[]}
 
-웹 검색이나 다른 도구는 사용하지 마. 호출할 수 없다면 일반 지식으로
-대답하지 말고 오류를 그대로 알려줘. 결과에서는 window_id,
-decision.state, retrieval.mode, brief_source, 시작/종료 시각만 짧게 정리해줘.
+Do not use web search or any other tool. If the MCP call fails, show the error
+instead of answering from general knowledge. After the call, briefly show only
+the window_id, decision.state, retrieval.mode, brief_source, start time, and
+end time.
 ```
 
-Approve only `find_surf_windows`. Point at these fields in order:
+Claude가 허가를 요청하면 `find_surf_windows`만 승인한다.
 
-| Field | Required evidence | What to say |
+다음 필드를 순서대로 가리킨다.
+
+| 필드 | 확인값 | 짧게 말할 영어 문장 |
 | --- | --- | --- |
-| Tool name | `find_surf_windows` | "This is an MCP call, not a prose-only answer." |
-| `resultType` | `complete` | "The structured contract completed." |
-| `retrieval.mode` | `live` | "It queried current public evidence and did not substitute a fixture." |
-| `retrieval.sources` | URL, retrieval time, freshness on each entry | "Each input is attributable and freshness-labelled." |
-| `brief_source` | `agent` | "The bounded Strands agent produced the brief on AgentCore." |
-| `decision.state` | any valid deterministic state | "Python produced this state; the model cannot edit it." |
-| `safety_limit` | present | "The result explicitly remains a planning aid." |
-| `window_id` | non-empty random ID | "This identifies the stored record used next." |
+| tool name | `find_surf_windows` | “This is a real MCP call.” |
+| `resultType` | `complete` | “The structured call is complete.” |
+| `retrieval.mode` | `live` | “This call used the live data path.” |
+| `retrieval.sources` | 각 항목에 URL, 시각, freshness | “Each source can be checked.” |
+| `brief_source` | `agent` 또는 정직하게 `template` | “Strands made this brief.” 또는 “The safe template was used.” |
+| `decision.state` | 유효한 결정 상태 | “Python made this decision.” |
+| `safety_limit` | 존재 | “This is only a planning aid.” |
+| `window_id` | 비어 있지 않은 ID | “This ID points to the saved record.” |
 
-Do not say "four sources" while the screen shows five evidence entries. Say
-"current public evidence" or the exact visible count. Do not describe
-supplemental sources as if they have the same authority as official sources.
+화면에 evidence가 5개라면 “four sources”라고 말하지 않는다.
+“current public data” 또는 실제로 보이는 개수만 말한다.
 
-Copy only `window_id`, not the full payload. A `caution`, `do_not_recommend`,
-or `insufficient_data` result is valid product behavior. Never rerun to obtain
-`recommended_window`.
+`window_id`만 복사한다. 전체 payload는 복사하지 않는다.
+`recommended_window`가 아니어도 성공이다. `official_advisory_present`,
+`stale_data`, `conflicting_evidence`, `not_recommended`, 또는
+`insufficient_data`가 나오면 그대로 설명한다.
 
-### 3B. Independent `explain_surf_window` — about 35 seconds
+### 3B. `explain_surf_window` — 약 35초
 
-Switch to clean conversation B. Replace `WINDOW_ID` with conversation A's ID:
+새 Claude 대화 B로 이동한다. `WINDOW_ID`만 실제 값으로 교체하고 아래
+**영어 프롬프트**를 붙여 넣는다.
 
 ```text
-Cape Fear Surf Guide MCP만 사용해 아래 저장된 결과를 다시 설명해줘.
+Use only the Cape Fear Surf Guide MCP to explain this saved result.
 
-반드시 explain_surf_window를 실제 호출해:
+You must call explain_surf_window with exactly these inputs:
 - window_id: WINDOW_ID
 - reading_level: beginner
 
-find_surf_windows를 다시 호출하거나 웹 검색을 하지 마. 저장된 결과를 찾을
-수 없다면 일반 지식으로 재구성하지 말고 오류를 그대로 알려줘. 결과에서는
-window_id, decision.state, retrieval.mode가 첫 호출과 같은지만 짧게 정리해줘.
+Do not call find_surf_windows again. Do not use web search. If the saved result
+cannot be found, show the error instead of rebuilding an answer. After the
+call, briefly confirm whether the window_id and decision.state match the first
+result.
 ```
 
-Approve only `explain_surf_window`. Show the tool name, `resultType: complete`,
-the exact same `window_id`, and the same decision and evidence.
+`explain_surf_window`만 승인한다. 아래를 보여준다.
 
-### Say
+- tool name이 `explain_surf_window`다.
+- `resultType`이 `complete`다.
+- `window_id`가 첫 호출과 정확히 같다.
+- `decision.state`와 evidence가 첫 결과와 같다.
 
-> This second conversation does not know the first conversation's history. It
-> reads the stored record by ID instead of asking the model to remember or
-> refreshing the sources. The decision is reproducible and auditable.
+### 영어로 말하기
 
-The record lasts 24 hours. An unknown or expired ID is a valid fail-closed
-error, not a successful replay.
+> This is a new Claude chat.
+> The window ID is not a chat session.
+> It points to the saved record.
+> No model memory is used.
+> No new source search is used.
 
-## 4. The veto the model cannot remove — 2:45 to 3:30
+저장 record는 24시간 후 만료된다. 없는 ID와 만료된 ID가 오류를 내는 것은
+정상적인 fail-closed 동작이다.
 
-Run the reviewed fixture:
+## 4. 모델이 없앨 수 없는 veto — 2:45-3:30
+
+### 화면
 
 ```bash
 uv run python main.py --fixture hazard
 ```
 
-Point to `official_advisory_present` and the veto state. Say:
+`official_advisory_present`와 veto를 보여준다. live hazard를 일부러 만들지
+않는다. 이 fixture가 검토된 위험 상황 증거다.
 
-> The agent is still free to explain the result, but the recommendation is
-> still no. The veto is applied in Python before model prose is accepted, and
-> the model has no path that can remove it.
+### 영어로 말하기
 
-Do not manufacture a live hazard. The fixture is intentional reviewed evidence.
+> This official warning is a hard veto.
+> Python applies it before the final brief.
+> The model cannot remove it.
 
-## 5. When evidence is bad — 3:30 to 4:10
+## 5. 데이터가 나쁠 때 — 3:30-4:10
 
-Run:
+### 화면
 
 ```bash
 uv run python main.py --fixture stale
 uv run python main.py --fixture conflict
 ```
 
-Point to `stale_data` and `conflicting_evidence`. Say:
+`stale_data`와 `conflicting_evidence`가 서로 다른 상태임을 보여준다.
 
-> These are distinct states, not one generic error. If a required live source
-> fails, the service returns insufficient data. It never silently substitutes
-> a friendly fixture.
+### 영어로 말하기
 
-## 6. Measured gates — 4:10 to 4:40
+> Old data and conflicting data are different problems.
+> The system names each problem.
+> If live data is missing, it stops.
+> It does not use a friendly fake result.
 
-Open the committed Phase 3 summary and show only:
+## 6. 측정 결과 — 4:10-4:40
 
-- 30 cases across normal, hazard, stale, and conflict scenarios;
-- deterministic path: zero model calls, byte-identical output, p95 below 2s;
-- agentic p95 `6,496.835 ms` against 30s;
-- max estimated request cost `$0.00086886` against `$0.05`;
-- 100% schema, tool-call, and official-veto success;
-- zero normal false vetoes and zero immutable-field violations.
+### 화면
 
-Say:
+Phase 3 summary에서 아래 숫자만 보여준다.
 
-> These are measured acceptance gates, not architecture claims. Provider token
-> counters are evidence, not an AWS billing invoice.
+- 30-case matrix
+- deterministic path: model call 0, byte-identical output, p95 2초 미만
+- agentic p95 `6,496.835 ms`, 제한 30초
+- 최대 추정 요청 비용 `$0.00086886`, 제한 `$0.05`
+- schema, tool-call, official-veto 성공률 100%
+- normal false veto 0, immutable-field violation 0
 
-## 7. Close — 4:40 to 5:00
+### 영어로 말하기
 
-Return to the README warning and source links. Say:
+> These are measured tests.
+> The policy stayed fixed.
+> The model output passed every schema check.
+> Token counts are evidence, not an AWS bill.
 
-> The operator is often not the person entering the water, and one answer can
-> travel to a group. Cape Fear Surf Guide proposes a window and shows its
-> evidence, but posted flags, lifeguards, and local officials always take
-> priority. It never says the water is safe.
+## 7. 마무리 — 4:40-5:00
 
-## Live-scene acceptance record
+### 화면
 
-Fill this out after the dry run. It contains no secret:
+README safety warning과 source link로 돌아간다.
+
+### 영어로 말하기
+
+> This tool suggests a time and shows its evidence.
+> It never says the water is safe.
+> Beach flags, lifeguards, and local officials always come first.
+
+## Live 장면 합격 기록
+
+드라이런 직후 아래만 기록한다. API 키나 전체 요청은 기록하지 않는다.
 
 ```text
 Recording date and timezone:
@@ -229,33 +296,35 @@ explain window_id matches: yes/no
 explain decision.state matches: yes/no
 ```
 
-The scene is ready only when discovery and both calls pass. "Connected" alone
-is not execution evidence.
+도구가 “connected”라고 표시되는 것만으로는 부족하다. discovery와 두 번의
+실제 호출이 모두 성공해야 한다.
 
-## Recording checklist
+## 녹화 체크리스트
 
-- [ ] Video is public and no longer than five minutes.
-- [ ] Opening states the problem, audience, and why it matters.
-- [ ] Claude shows exactly the expected MCP tools.
-- [ ] Live result shows `retrieval.mode: live` and `brief_source: agent`.
-- [ ] Replay shows the same `window_id` and decision state.
-- [ ] Hazard, stale, and conflict states are visibly distinct.
-- [ ] Narration says official advisories override model explanation.
-- [ ] No API key, header, credential, AWS identifier, company detail,
-      username, hostname, private path, notification, or unrelated MCP appears.
-- [ ] No narration claims that ocean activity is safe.
-- [ ] No repeated live calls fish for a nicer answer.
+- [ ] 영상은 5분 이하이고 공개로 업로드할 수 있다.
+- [ ] 시작 45초 안에 문제, 사용자, 중요한 이유를 모두 말한다.
+- [ ] Claude 화면에 예상한 MCP 도구만 보인다.
+- [ ] live 결과에 `retrieval.mode: live`가 보인다.
+- [ ] `brief_source`가 `agent`인지 `template`인지 정확히 말한다.
+- [ ] replay에서 같은 `window_id`와 결정 상태가 보인다.
+- [ ] `window_id`를 session ID라고 부르지 않는다.
+- [ ] hazard, stale, conflict 상태가 서로 다르게 보인다.
+- [ ] 공식 경고가 모델 설명보다 우선한다고 말한다.
+- [ ] API 키, header, AWS 식별자, 회사 정보, 사용자명, hostname, 개인 경로,
+      알림 또는 다른 MCP가 보이지 않는다.
+- [ ] 바다가 안전하다고 말하지 않는다.
+- [ ] 좋은 답을 찾으려고 live 호출을 반복하지 않는다.
 
-## Failure plan during recording
+## 녹화 중 실패하면
 
-- If Claude proposes web search, cancel it and restart with the exact prompt.
-- If `invalid_party_profile` appears, restore the exact `skill_level` object;
-  do not improvise a field such as `experience`.
-- If HTTP 403 or 429 appears, stop. Have the owner check key status, expiry,
-  request count, and WAF metrics before one new attempt.
-- Keep a legitimate veto or `insufficient_data`; explain that fail-closed
-  behavior is the product working.
-- For an unknown replay ID, compare it character for character before
-  considering another budget-consuming `find` call.
+- Claude가 web search를 제안하면 취소하고 정확한 영어 프롬프트로 다시
+  시작한다.
+- `invalid_party_profile`이면 `experience` 같은 필드를 만들지 말고
+  정확한 `skill_level` 객체를 복구한다.
+- HTTP 403 또는 429면 중단한다. owner가 API 키, expiry, request count,
+  WAF를 확인하기 전에는 다시 호출하지 않는다.
+- 실제 veto나 `insufficient_data`는 그대로 사용한다. 이것은 시스템이
+  실패한 것이 아니라 fail-closed로 동작한 것이다.
+- replay ID 오류면 새 `find`를 호출하기 전에 복사한 문자열부터 비교한다.
 
-Never switch to a cached response and describe it as live.
+cached 결과를 live 결과라고 설명하지 않는다.
