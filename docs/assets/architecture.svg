@@ -1,22 +1,139 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" role="img" aria-labelledby="title desc">
-  <title id="title">Cape Fear Surf Guide safety architecture</title>
-  <desc id="desc">Interfaces feed one Strands agent and deterministic source tools. The immutable policy record gates the structured brief. AgentCore MCP v2 remains an optional, independently verified deployment boundary.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="900" viewBox="0 0 1400 900" role="img" aria-labelledby="title desc">
+  <title id="title">Cape Fear Surf Guide deployed MCP and AgentCore architecture</title>
+  <desc id="desc">Claude calls two MCP tools through API Gateway and Lambda. Find creates a new AgentCore session where deterministic Python retrieves and decides before a bounded Strands workflow explains the immutable record. Lambda stores that record in DynamoDB. Explain reads the stored record directly without AgentCore or model memory.</desc>
   <style>
-    text { font-family: Arial, sans-serif; fill: #11253b; } .title { font-size: 26px; font-weight: bold; } .label { font-size: 17px; font-weight: bold; } .small { font-size: 14px; } .box { stroke: #28536b; stroke-width: 2; rx: 12; } .line { stroke: #28536b; stroke-width: 3; fill: none; marker-end: url(#arrow); } .note { fill: #fff4d6; stroke: #a66a00; stroke-width: 2; rx: 10; }
+    text { font-family: Inter, Arial, sans-serif; fill: #10243a; }
+    .title { font-size: 30px; font-weight: 700; }
+    .subtitle { font-size: 15px; fill: #486277; }
+    .section { font-size: 13px; font-weight: 700; letter-spacing: 1.4px; fill: #476477; }
+    .label { font-size: 18px; font-weight: 700; }
+    .body { font-size: 14px; }
+    .small { font-size: 12.5px; fill: #385267; }
+    .box { stroke: #28536b; stroke-width: 2; rx: 14; }
+    .agentcore { fill: #eef7fb; stroke: #28536b; stroke-width: 2.5; rx: 20; }
+    .client { fill: #d9edf7; }
+    .security { fill: #fff2cf; stroke: #a66a00; }
+    .python { fill: #dcefe1; }
+    .strands { fill: #dce9f7; }
+    .store { fill: #ede4f7; stroke: #6a4a8a; }
+    .result { fill: #d9edf7; }
+    .boundary { fill: #fff7e5; stroke: #a66a00; stroke-width: 2; rx: 12; }
+    .line { stroke: #28536b; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+    .find { stroke: #146b8c; }
+    .explain { stroke: #73539a; }
+    .constraint { stroke: #a66a00; stroke-width: 2; stroke-dasharray: 7 6; fill: none; marker-end: url(#arrow-gold); }
+    .return { stroke: #477387; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+    .tag-find { fill: #e0f2f8; stroke: #146b8c; rx: 9; }
+    .tag-explain { fill: #eee7f7; stroke: #73539a; rx: 9; }
+    .tag-text { font-size: 12px; font-weight: 700; }
   </style>
-  <defs><marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto"><polygon points="0 0, 10 3.5, 0 7" fill="#28536b"/></marker></defs>
-  <rect width="1200" height="720" fill="#f7fbfe"/>
-  <text x="42" y="48" class="title">Cape Fear Surf Guide: deterministic safety, agentic retrieval and explanation</text>
-  <rect x="40" y="92" width="260" height="105" class="box" fill="#d9edf7"/><text x="75" y="126" class="label">Shared application service</text><text x="70" y="154" class="small">CLI · static HTML · MCP</text><text x="62" y="176" class="small">optional Slack · surf-school adapter</text>
-  <rect x="455" y="92" width="300" height="105" class="box" fill="#d9edf7"/><text x="510" y="126" class="label">One Strands agent</text><text x="485" y="154" class="small">intake · tool-driven retrieval</text><text x="496" y="176" class="small">structured SurfBrief only</text>
-  <path d="M300 145 H455" class="line"/>
-  <rect x="875" y="92" width="275" height="105" class="note"/><text x="925" y="126" class="label">Agent boundary</text><text x="898" y="154" class="small">may choose what to query</text><text x="891" y="176" class="small">cannot decide water safety</text>
-  <rect x="405" y="270" width="400" height="105" class="box" fill="#dff3e4"/><text x="466" y="304" class="label">Recorded fact-only @tools</text><text x="440" y="332" class="small">NWS · NOAA · NC DEQ · Open-Meteo</text><text x="449" y="354" class="small">arguments, latency, failures preserved</text>
-  <path d="M605 197 V270" class="line"/>
-  <rect x="365" y="445" width="480" height="120" class="box" fill="#cbe7d4"/><text x="453" y="481" class="label">Deterministic Python policy core</text><text x="400" y="510" class="small">normalize and convert times · derive windows · apply vetoes</text><text x="428" y="536" class="small">immutable RecommendationRecord via policy.decide</text>
-  <path d="M605 375 V445" class="line"/>
-  <rect x="390" y="625" width="430" height="58" class="box" fill="#d9edf7"/><text x="487" y="660" class="label">Schema-validated brief or template fallback</text>
-  <path d="M605 565 V625" class="line"/>
-  <rect x="865" y="445" width="290" height="120" class="note"/><text x="906" y="480" class="label">MCP v2 / AgentCore</text><text x="890" y="508" class="small">stateless POST boundary verified</text><text x="882" y="533" class="small">optional runtime; no deployment here</text>
-  <path d="M845 505 H865" class="line"/>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#28536b"/>
+    </marker>
+    <marker id="arrow-gold" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+      <polygon points="0 0, 10 3.5, 0 7" fill="#a66a00"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="900" fill="#f7fbfe"/>
+  <text x="44" y="48" class="title">Cape Fear Surf Guide: deployed MCP and AgentCore flow</text>
+  <text x="44" y="75" class="subtitle">Deterministic Python owns every decision. Strands retrieves facts from the fixed record and explains it.</text>
+
+  <text x="44" y="115" class="section">PUBLIC MCP BOUNDARY</text>
+
+  <rect x="44" y="135" width="245" height="134" class="box client"/>
+  <text x="81" y="170" class="label">Claude Desktop</text>
+  <text x="76" y="198" class="body">Natural-language request</text>
+  <text x="67" y="220" class="small">chooses one public MCP tool</text>
+  <text x="103" y="240" class="small">find_surf_windows</text>
+  <text x="94" y="258" class="small">explain_surf_window</text>
+
+  <rect x="350" y="135" width="275" height="118" class="box security"/>
+  <text x="403" y="170" class="label">API Gateway + WAF</text>
+  <text x="409" y="198" class="body">x-api-key · rate limit</text>
+  <text x="396" y="223" class="small">72-hour exposure · request budget</text>
+  <text x="435" y="242" class="small">circuit breaker</text>
+
+  <rect x="686" y="135" width="270" height="118" class="box client"/>
+  <text x="749" y="170" class="label">MCP Lambda</text>
+  <text x="724" y="198" class="body">validates MCP contract</text>
+  <text x="711" y="223" class="small">dispatches find or explain</text>
+  <text x="713" y="242" class="small">does not make the safety decision</text>
+
+  <path d="M289 194 H350" class="line"/>
+  <path d="M625 194 H686" class="line"/>
+
+  <rect x="1014" y="135" width="330" height="118" class="box store"/>
+  <text x="1086" y="170" class="label">DynamoDB record store</text>
+  <text x="1063" y="198" class="body">window_id → immutable result</text>
+  <text x="1089" y="223" class="small">encrypted · 24-hour TTL</text>
+  <text x="1070" y="242" class="small">not a chat or AgentCore session</text>
+
+  <rect x="50" y="306" width="900" height="470" class="agentcore"/>
+  <text x="82" y="339" class="section">FIND PATH — NEW AGENTCORE RUNTIME SESSION FOR EACH REQUEST</text>
+
+  <rect x="84" y="368" width="365" height="250" class="box python"/>
+  <text x="141" y="405" class="label">Deterministic Python first</text>
+  <text x="112" y="438" class="body">1. validate structured input</text>
+  <text x="112" y="468" class="body">2. fetch NWS · NOAA · NC DEQ · Open-Meteo</text>
+  <text x="112" y="498" class="body">3. normalize time, freshness, and conflicts</text>
+  <text x="112" y="528" class="body">4. derive the candidate window</text>
+  <text x="112" y="558" class="body">5. apply vetoes with policy.decide</text>
+  <text x="112" y="590" class="small">output: immutable RecommendationRecord</text>
+
+  <rect x="527" y="368" width="385" height="250" class="box strands"/>
+  <text x="582" y="405" class="label">Bounded Strands workflow</text>
+  <text x="558" y="438" class="body">Retrieval pass</text>
+  <text x="580" y="462" class="small">calls fact-only @tools over canonical evidence</text>
+  <text x="580" y="482" class="small">tools do not call Lambda or read DynamoDB</text>
+  <text x="558" y="520" class="body">Explanation pass</text>
+  <text x="580" y="544" class="small">formats the fixed record as SurfBrief</text>
+  <text x="580" y="564" class="small">may explain; cannot change the decision</text>
+  <text x="580" y="590" class="small">two bounded Agent instances in current code</text>
+
+  <path d="M449 493 H527" class="line find"/>
+  <rect x="459" y="464" width="58" height="24" class="tag-find"/>
+  <text x="472" y="481" class="tag-text">record</text>
+
+  <rect x="315" y="661" width="390" height="82" class="box result"/>
+  <text x="370" y="694" class="label">Invariant validation + fallback</text>
+  <text x="349" y="720" class="small">window_id · decision · URLs · vetoes must match</text>
+  <text x="388" y="738" class="small">invalid model output → template brief</text>
+
+  <path d="M719 618 V646 H705 V681" class="line find"/>
+  <path d="M267 618 V640 H315 V681" class="constraint"/>
+  <text x="112" y="645" class="small">immutable policy constraint</text>
+
+  <path d="M821 253 V285 H500 V306" class="line find"/>
+  <rect x="706" y="270" width="72" height="24" class="tag-find"/>
+  <text x="723" y="287" class="tag-text">find</text>
+
+  <path d="M705 702 H980 V302 H1179 V253" class="return"/>
+  <text x="987" y="325" class="small">validated result returns through Lambda</text>
+  <text x="987" y="346" class="small">Lambda stores payload under window_id</text>
+
+  <path d="M956 194 H1014" class="line explain"/>
+  <rect x="963" y="160" width="82" height="24" class="tag-explain"/>
+  <text x="973" y="177" class="tag-text">explain</text>
+  <text x="981" y="276" class="small">direct GetItem replay</text>
+  <text x="981" y="295" class="small">no AgentCore · no model · no source refresh</text>
+
+  <rect x="1014" y="390" width="330" height="124" class="box result"/>
+  <text x="1081" y="426" class="label">Structured MCP response</text>
+  <text x="1074" y="455" class="body">record · SurfBrief · retrieval metadata</text>
+  <text x="1085" y="480" class="small">same window_id and decision on replay</text>
+  <text x="1080" y="500" class="small">explicit planning-aid safety limit</text>
+  <path d="M1179 253 V390" class="line explain"/>
+  <path d="M1014 452 H985 V812 H166 V253" class="return"/>
+
+  <rect x="1014" y="572" width="330" height="204" class="boundary"/>
+  <text x="1091" y="610" class="label">Authority boundary</text>
+  <text x="1046" y="646" class="body">Claude chooses the public MCP tool.</text>
+  <text x="1046" y="676" class="body">Python owns retrieval and policy.</text>
+  <text x="1046" y="706" class="body">Strands explains the fixed record.</text>
+  <text x="1046" y="736" class="body">Only officials can declare conditions safe.</text>
+
+  <rect x="50" y="820" width="1294" height="48" rx="12" fill="#eaf2f6" stroke="#8da8b7"/>
+  <text x="89" y="850" class="small">window_id is a 24-hour DynamoDB lookup key for stateless replay — not a Claude conversation ID and not an AgentCore runtimeSessionId.</text>
 </svg>
