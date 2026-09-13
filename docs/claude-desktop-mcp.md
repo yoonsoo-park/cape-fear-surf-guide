@@ -1,12 +1,15 @@
 # Claude Desktop, ChatGPT Desktop, and Codex MCP verification
 
-Verified documentation date: **2026-08-24**. The live demo is an API-key-gated,
+Verified documentation date: **2026-09-13**. The live demo is an API-key-gated,
 rate-limited MCP endpoint; it is not a safety guarantee.
 
-Current verification status: Codex CLI completed a live `find_surf_windows`
-call on 2026-08-24. ChatGPT Desktop and Claude Desktop still require the
-manual discovery-and-replay evidence described below; do not mark either as
-verified until both `find_surf_windows` and `explain_surf_window` succeed.
+Current verification status: Codex CLI `0.144.3` completed live
+`find_surf_windows` and `explain_surf_window` calls through the stdio
+compatibility route on 2026-09-13. Both calls used window ID
+`5550677f82bf401eac1c45d322ed8030`, returned `recommended_window`, and reported
+`retrieval.mode: live`. The Codex/ChatGPT Desktop UI and Claude Desktop still
+require the manual discovery-and-replay evidence described below; do not mark
+either UI as verified until both calls succeed there.
 
 Codex CLI `0.144.3` can display `env_http_headers` in its resolved
 configuration while still omitting the `x-api-key` header during the remote
