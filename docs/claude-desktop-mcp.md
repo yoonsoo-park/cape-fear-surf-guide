@@ -18,6 +18,10 @@ stdio compatibility route below. Do not copy the key into `config.toml`.
 
 ## Claude Desktop route
 
+For the complete company-managed macOS procedure, including secret handling,
+test prompts, evidence capture, troubleshooting, and cleanup, follow the
+[Claude Desktop company-laptop verification runbook](claude-desktop-company-laptop-runbook.md).
+
 After the approved API Gateway endpoint is deployed, add its exact HTTPS
 `/mcp` URL in Claude Desktop's remote MCP connector UI with the individually
 issued `x-api-key`. Never put the key in the repository, a recording, or a
