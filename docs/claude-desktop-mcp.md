@@ -1,12 +1,20 @@
 # Claude Desktop, ChatGPT Desktop, and Codex MCP verification
 
-Verified documentation date: **2026-08-24**. The live demo is an API-key-gated,
+Verified documentation date: **2026-09-13**. The live demo is an API-key-gated,
 rate-limited MCP endpoint; it is not a safety guarantee.
 
-Current verification status: Codex CLI completed a live `find_surf_windows`
-call on 2026-08-24. ChatGPT Desktop and Claude Desktop still require the
-manual discovery-and-replay evidence described below; do not mark either as
-verified until both `find_surf_windows` and `explain_surf_window` succeed.
+Current verification status: Codex CLI `0.144.3` completed live
+`find_surf_windows` and `explain_surf_window` calls through the stdio
+compatibility route on 2026-09-13. Both calls used window ID
+`5550677f82bf401eac1c45d322ed8030`, returned `recommended_window`, and reported
+`retrieval.mode: live`. The Codex/ChatGPT Desktop UI and Claude Desktop still
+require the manual discovery-and-replay evidence described below; do not mark
+either UI as verified until both calls succeed there.
+
+Codex CLI `0.144.3` can display `env_http_headers` in its resolved
+configuration while still omitting the `x-api-key` header during the remote
+MCP initialization request. If that version returns HTTP 403, use the local
+stdio compatibility route below. Do not copy the key into `config.toml`.
 
 ## Claude Desktop route
 
@@ -57,6 +65,33 @@ required here because it reads the API key from an environment variable rather
 than saving a static secret header. ChatGPT web does not read this local file;
 it needs a separately installed hosted app or plugin and is out of scope for
 the judged demo.
+
+### Codex 0.144.3 stdio compatibility route
+
+The bridge converts the local environment value to `x-api-key` and keeps the
+remote request stateless. Point the command and paths at the checked-out
+repository; the secret remains only in `CAPE_FEAR_MCP_API_KEY`:
+
+```toml
+[mcp_servers.cape_fear_surf_guide]
+command = "/ABSOLUTE/PATH/cape-fear-surf-guide/mcp_runtime/.venv/bin/python"
+args = [
+  "-m", "mcp_runtime.claude_desktop_bridge",
+  "--endpoint", "https://YOUR_API_ID.execute-api.us-east-1.amazonaws.com/demo/mcp",
+  "--api-key-env-var", "CAPE_FEAR_MCP_API_KEY",
+]
+cwd = "/ABSOLUTE/PATH/cape-fear-surf-guide/mcp_runtime"
+env = { PYTHONPATH = "/ABSOLUTE/PATH/cape-fear-surf-guide" }
+env_vars = ["CAPE_FEAR_MCP_API_KEY"]
+enabled_tools = ["find_surf_windows", "explain_surf_window"]
+default_tools_approval_mode = "prompt"
+tool_timeout_sec = 45
+enabled = true
+```
+
+This is also the fallback for Claude Desktop when its remote connector cannot
+attach a non-OAuth `x-api-key` header. It is a client-side adapter only; the
+public AWS path remains API Gateway/Lambda to AgentCore Runtime.
 
 Record only the client version, date, endpoint, tool name, HTTP result,
 decision state, retrieval mode, and `window_id`. Do not record an API-key

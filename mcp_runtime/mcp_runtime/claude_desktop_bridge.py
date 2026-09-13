@@ -1,16 +1,17 @@
-"""Local stdio MCP bridge for Claude Desktop's bearer-protected frozen demo.
+"""Local stdio MCP bridge for Desktop clients that need an auth-header adapter.
 
 Claude Desktop speaks MCP to this process over standard input and output.  The
 bridge owns the one-way adaptation to the deployed stateless HTTPS endpoint:
-it reads the bearer token from the macOS Keychain and sends one independent
-JSON-RPC request for each tool call.  It deliberately does not implement OAuth
-or retain an MCP session.
+it reads a credential from the environment or macOS Keychain and sends one
+independent JSON-RPC request for each tool call.  It deliberately does not
+implement OAuth or retain an MCP session.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import ssl
 import subprocess
 import sys
@@ -86,6 +87,19 @@ class KeychainTokenProvider:
         return token
 
 
+class EnvironmentTokenProvider:
+    """Read one named credential from the bridge process environment."""
+
+    def __init__(self, variable_name: str) -> None:
+        self.variable_name = variable_name
+
+    def get_token(self) -> str:
+        token = os.environ.get(self.variable_name, "").strip()
+        if not token:
+            raise BridgeFailure("environment_token_unavailable", "The configured environment credential is unavailable.")
+        return token
+
+
 class UrllibHttpPoster:
     """POST JSON without adding another dependency to the pinned MCP runtime."""
 
@@ -125,7 +139,14 @@ def _log_request(endpoint: str, tool_name: str, status: int | str) -> None:
 def validate_endpoint(endpoint: str) -> str:
     """Accept only the public HTTPS MCP path; the URL itself is not a secret."""
     parsed = urlsplit(endpoint)
-    if parsed.scheme != "https" or not parsed.netloc or parsed.path != MCP_PATH or parsed.query or parsed.fragment:
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or not parsed.path.endswith(MCP_PATH)
+        or parsed.path.endswith(f"{MCP_PATH}/")
+        or parsed.query
+        or parsed.fragment
+    ):
         raise ValueError("--endpoint must be an HTTPS URL ending exactly in /mcp")
     return endpoint
 
@@ -146,6 +167,14 @@ class RemoteMcpProxy:
         self.token_provider = token_provider
         self.http = http
         self._request_ids = count(1)
+        self.credential_header = "Authorization"
+        self.credential_prefix = "Bearer "
+
+    def use_api_key_header(self) -> "RemoteMcpProxy":
+        """Use API Gateway's x-api-key header without copying the value into config."""
+        self.credential_header = "x-api-key"
+        self.credential_prefix = ""
+        return self
 
     def call_tool(self, tool_name: str, arguments: dict[str, Any]) -> CallToolResult:
         try:
@@ -169,9 +198,10 @@ class RemoteMcpProxy:
         body = json.dumps(request, separators=(",", ":")).encode("utf-8")
         headers = {
             "Accept": "application/json, text/event-stream",
-            "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "MCP-Protocol-Version": PROTOCOL_VERSION,
+            "User-Agent": "cape-fear-desktop-bridge/1.0",
+            self.credential_header: f"{self.credential_prefix}{token}",
         }
         try:
             response = self.http.post(self.endpoint, headers, body)
@@ -247,6 +277,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--endpoint", required=True, type=validate_endpoint, help="Public HTTPS MCP URL ending in /mcp.")
     parser.add_argument("--keychain-service", default=KEYCHAIN_SERVICE)
     parser.add_argument("--keychain-account", default=KEYCHAIN_ACCOUNT)
+    parser.add_argument(
+        "--api-key-env-var",
+        help="Read an API Gateway key from this environment variable and send it as x-api-key.",
+    )
     parser.add_argument("--ca-bundle", type=validate_ca_bundle, help="Optional local CA bundle for HTTPS inspection proxies.")
     parser.add_argument("--timeout-seconds", type=float, default=DEFAULT_TIMEOUT_SECONDS)
     args = parser.parse_args(argv)
@@ -257,11 +291,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
-    proxy = RemoteMcpProxy(
-        args.endpoint,
-        KeychainTokenProvider(args.keychain_service, args.keychain_account),
-        UrllibHttpPoster(args.timeout_seconds, args.ca_bundle),
-    )
+    token_provider: TokenProvider
+    if args.api_key_env_var:
+        token_provider = EnvironmentTokenProvider(args.api_key_env_var)
+    else:
+        token_provider = KeychainTokenProvider(args.keychain_service, args.keychain_account)
+    proxy = RemoteMcpProxy(args.endpoint, token_provider, UrllibHttpPoster(args.timeout_seconds, args.ca_bundle))
+    if args.api_key_env_var:
+        proxy.use_api_key_header()
     create_bridge_server(proxy).run(transport="stdio")
 
 

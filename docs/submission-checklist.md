@@ -26,7 +26,13 @@
 - [ ] Record the public video using [`docs/demo-script.md`](demo-script.md); keep it at five minutes or less.
 - [x] After explicit AWS approval, deploy the API Gateway REST + WAF API-key-gated live MCP stack. The deployed Lambda invokes the dedicated AgentCore Runtime; the public judge path remains API Gateway/Lambda.
 - [ ] Record Claude Desktop plus ChatGPT Desktop/Codex tool discovery, live call, and 24-hour `window_id` replay. Use the environment-backed `x-api-key`; do not record its value.
-- [ ] For that deployment, record the new `ExposureId`, approved 72-hour `PublicUntilUtc`, $10 budget-email confirmation, and circuit-breaker status. After expiry, confirm concurrency is zero before requesting separate stack-deletion approval.
+- [x] Judge exposure activated on 2026-09-13 as `judge-20260913-a`, with
+  `PublicUntilUtc=2026-09-16T12:25:20Z`, the $10 monthly budget notification
+  confirmed for the approved private recipient, and the circuit breaker
+  enabled. After the Codex replay, the exposure was `enabled` at 36/120 valid
+  requests and the
+  judge Lambda reserved concurrency was 2. After expiry, confirm concurrency
+  is zero before requesting separate stack-deletion approval.
 - [ ] Upload the video after human approval and add its public URL to the Devpost entry.
 - [ ] Paste and review [`docs/devpost-draft.md`](devpost-draft.md) in Devpost after human approval.
 - [ ] Publish blog drafts [`01`](blog/01-measuring-a-strands-swarm.md), [`02`](blog/02-why-the-safety-decision-is-not-a-prompt.md), and [`03`](blog/03-measuring-one-bounded-agent.md) only after human approval.
