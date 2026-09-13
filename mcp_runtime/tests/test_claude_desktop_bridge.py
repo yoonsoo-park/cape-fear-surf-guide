@@ -8,6 +8,7 @@ import pytest
 
 from mcp_runtime.claude_desktop_bridge import (
     BridgeFailure,
+    EnvironmentTokenProvider,
     HttpResponse,
     RemoteMcpProxy,
     create_bridge_server,
@@ -86,6 +87,30 @@ def test_bridge_forwards_each_tool_call_as_a_fresh_authenticated_v2_request(caps
     assert "not-a-real-token" not in capsys.readouterr().err
 
 
+def test_bridge_can_forward_an_environment_api_key_without_bearer_or_secret_logs(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+):
+    monkeypatch.setenv("CAPE_FEAR_MCP_API_KEY", "not-a-real-api-key")
+    http = FakeHttp(_result_response())
+    proxy = RemoteMcpProxy(
+        "https://example.invalid/mcp", EnvironmentTokenProvider("CAPE_FEAR_MCP_API_KEY"), http
+    ).use_api_key_header()
+
+    result = proxy.call_tool("find_surf_windows", {"date": "2026-09-14"})
+
+    assert result.is_error is False
+    assert http.calls[0][1]["x-api-key"] == "not-a-real-api-key"
+    assert "Authorization" not in http.calls[0][1]
+    assert http.calls[0][1]["User-Agent"] == "cape-fear-desktop-bridge/1.0"
+    assert "not-a-real-api-key" not in capsys.readouterr().err
+
+
+def test_environment_api_key_fails_closed_when_missing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("CAPE_FEAR_MCP_API_KEY", raising=False)
+    with pytest.raises(BridgeFailure, match="environment credential is unavailable"):
+        EnvironmentTokenProvider("CAPE_FEAR_MCP_API_KEY").get_token()
+
+
 def test_local_mcp_tool_call_preserves_a_valid_remote_structured_result():
     async def run() -> None:
         server = create_bridge_server(
@@ -137,7 +162,19 @@ def test_bridge_requires_the_exact_public_https_mcp_endpoint(endpoint: str):
         validate_endpoint(endpoint)
 
 
+def test_bridge_accepts_an_api_gateway_stage_before_the_mcp_path():
+    endpoint = "https://example.execute-api.us-east-1.amazonaws.com/demo/mcp"
+    assert validate_endpoint(endpoint) == endpoint
+
+
 def test_bridge_accepts_an_explicit_nonsecret_ca_bundle(tmp_path):
     bundle = tmp_path / "company-ca.pem"
     bundle.write_text("test certificate bundle")
     assert parse_args(["--endpoint", "https://example.invalid/mcp", "--ca-bundle", str(bundle)]).ca_bundle == str(bundle)
+
+
+def test_bridge_accepts_environment_api_key_mode():
+    args = parse_args(
+        ["--endpoint", "https://example.invalid/mcp", "--api-key-env-var", "CAPE_FEAR_MCP_API_KEY"]
+    )
+    assert args.api_key_env_var == "CAPE_FEAR_MCP_API_KEY"
