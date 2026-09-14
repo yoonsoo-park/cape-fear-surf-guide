@@ -111,6 +111,11 @@ fixed charges.
 
 ## Manual judge-client evidence
 
+For the complete activation, per-judge API-key, evidence, expiry, and cleanup
+procedure, use [`judge-access-runbook.md`](judge-access-runbook.md). The helper
+`scripts/prepare_judge_exposure.py` generates a fresh exposure ID and an expiry
+of no more than 72 hours without making any AWS changes.
+
 Claude Desktop and ChatGPT Desktop/Codex are the manual demonstration routes.
 Use the remote MCP connector UI or the local Codex MCP configuration with the
 approved `POST /mcp` URL and supplied `x-api-key`, discover

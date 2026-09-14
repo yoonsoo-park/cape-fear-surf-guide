@@ -33,6 +33,10 @@
   requests and the
   judge Lambda reserved concurrency was 2. After expiry, confirm concurrency
   is zero before requesting separate stack-deletion approval.
+- [ ] For any later judge request, follow
+  [`judge-access-runbook.md`](judge-access-runbook.md): use a new exposure ID,
+  obtain fresh AWS approval, issue one judge key, verify a live call plus replay,
+  confirm the hard stop, and revoke the key.
 - [ ] Upload the video after human approval and add its public URL to the Devpost entry.
 - [ ] Paste and review [`docs/devpost-draft.md`](devpost-draft.md) in Devpost after human approval.
 - [ ] Publish blog drafts [`01`](blog/01-measuring-a-strands-swarm.md), [`02`](blog/02-why-the-safety-decision-is-not-a-prompt.md), and [`03`](blog/03-measuring-one-bounded-agent.md) only after human approval.
