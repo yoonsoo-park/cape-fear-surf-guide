@@ -27,13 +27,12 @@ from surf.live_store import DynamoDbRecordStore, RecordStore, unix_now
 from .exposure_control import ExposureUnavailable, RequestBudget
 
 PROTOCOL_VERSION = "2026-07-28"
-# The public judge route uses the stateless v2 envelope above.  Codex's
-# Streamable HTTP client still performs the ordinary MCP initialization
-# handshake, currently advertising 2025-06-18.  Supporting that read-only
-# compatibility surface does not change the v2 route or the deterministic
-# tool policy; it only lets standard MCP hosts discover and call the same two
-# tools.
-STANDARD_PROTOCOL_VERSIONS = frozenset({"2025-03-26", "2025-06-18"})
+# The public judge route uses the stateless v2 envelope above. Streamable HTTP
+# clients can instead perform the ordinary MCP initialization handshake.
+# Supporting that read-only compatibility surface does not change the v2 route
+# or deterministic tool policy; it only lets standard MCP hosts discover and
+# call the same two tools. 2025-11-25 is the Alexa+ compatibility floor.
+STANDARD_PROTOCOL_VERSIONS = frozenset({"2025-03-26", "2025-06-18", "2025-11-25"})
 MCP_PATH = "/mcp"
 DEFAULT_MAX_REQUEST_BODY_BYTES = 65_536
 RECORD_TTL_SECONDS = 24 * 60 * 60

@@ -84,7 +84,9 @@ uv run --project mcp_runtime python -m mcp_runtime.server
 ```
 
 It exposes one unauthenticated, stateless Streamable HTTP `POST /mcp` endpoint
-using protocol `2026-07-28`. It accepts Wrightsville Beach only and dates from
+using protocol `2026-07-28`. It also accepts standard Streamable HTTP
+initialization through `2025-03-26`, `2025-06-18`, and `2025-11-25` (the Alexa+
+compatibility floor). It accepts Wrightsville Beach only and dates from
 today through six days ahead in `America/New_York`. Every `find_surf_windows`
 request retrieves NWS, NOAA, and Open-Meteo data live; source failure returns
 `insufficient_data` and never falls back to a fixture. It stores the exact
