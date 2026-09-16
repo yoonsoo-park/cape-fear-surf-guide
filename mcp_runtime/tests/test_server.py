@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from starlette.testclient import TestClient
 
 from mcp_runtime.server import PROTOCOL_VERSION, SUPPORTED_TOOL_NAMES, _validate_request, create_app
@@ -43,9 +45,10 @@ def test_public_transport_is_unauthenticated_but_rejects_invalid_protocol_and_bo
     assert _validate_request(headers, json.dumps(unsupported).encode(), ())[1] == "unsupported_tool"
 
 
-def test_standard_mcp_handshake_is_accepted_for_codex_without_relaxing_v2_contract():
+@pytest.mark.parametrize("protocol_version", ["2025-03-26", "2025-06-18", "2025-11-25"])
+def test_standard_mcp_handshake_is_accepted_without_relaxing_v2_contract(protocol_version: str):
     initialize = _standard_request("initialize", {
-        "protocolVersion": "2025-06-18", "capabilities": {},
+        "protocolVersion": protocol_version, "capabilities": {},
         "clientInfo": {"name": "codex-mcp-client", "version": "0.144.3"},
     })
     assert _validate_request({}, json.dumps(initialize).encode(), ()) is None
@@ -54,16 +57,17 @@ def test_standard_mcp_handshake_is_accepted_for_codex_without_relaxing_v2_contra
     assert _validate_request({}, json.dumps(_request("tools/list", {})).encode(), ()) [1] == "invalid_protocol_version"
 
 
-def test_standard_codex_initialize_discovery_and_tool_call_use_the_same_deterministic_server():
+@pytest.mark.parametrize("protocol_version", ["2025-06-18", "2025-11-25"])
+def test_standard_initialize_discovery_and_tool_call_use_the_same_deterministic_server(protocol_version: str):
     store = InMemoryRecordStore()
     app = create_app(record_store=store, planner=_planner, now=lambda: 1_000)
     with TestClient(app, base_url="http://localhost:8000") as client:
         initialize = client.post("/mcp", json=_standard_request("initialize", {
-            "protocolVersion": "2025-06-18", "capabilities": {},
-            "clientInfo": {"name": "codex-mcp-client", "version": "0.144.3"},
+            "protocolVersion": protocol_version, "capabilities": {},
+            "clientInfo": {"name": "standard-mcp-client", "version": "0.1.0"},
         }), headers={"Accept": "text/event-stream, application/json"})
         assert initialize.status_code == 200
-        assert initialize.json()["result"]["protocolVersion"] == "2025-06-18"
+        assert initialize.json()["result"]["protocolVersion"] == protocol_version
 
         initialized = client.post("/mcp", json=_standard_request("notifications/initialized", {}, request_id=None),
                                   headers={"Accept": "text/event-stream, application/json"})
